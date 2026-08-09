@@ -6,6 +6,7 @@ import { SchedulerPanel } from './SchedulerPanel';
 import { HistoryPanel } from './HistoryPanel';
 import { WaServerSettingsDialog } from './WaServerSettingsDialog';
 import { useBotStore } from '@/store/botStore';
+import { useBotStateDb } from '@/hooks/use-bot-state-db';
 import { MessageSquare, History, Settings, MoreVertical, Download, Loader2, Wifi } from 'lucide-react';
 import {
   DropdownMenu,
@@ -74,6 +75,7 @@ function HeaderMenu({ onOpenWaSettings }: { onOpenWaSettings: () => void }) {
 export default function BotDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [waSettingsOpen, setWaSettingsOpen] = useState(false);
+  useBotStateDb(); // persiste targets, configs e isRunning no banco
   const { isRunning, messages } = useBotStore();
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
