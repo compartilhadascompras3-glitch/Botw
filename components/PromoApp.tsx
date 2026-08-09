@@ -454,6 +454,19 @@ export default function PromoApp() {
     setActiveCategory('');
     setQuery('');
     setSortKey('default');
+    // Força reload dos produtos ao trocar de aba
+    if (s === 'amazon') {
+      setAmzProducts([]);
+      setAmzError(null);
+    } else if (s === 'shopee') {
+      setSpeProducts([]);
+      setSpeError(null);
+    } else {
+      setMlProducts([]);
+      setMlError(null);
+      setMlPage(1);
+      setMlHasMore(true);
+    }
   };
 
   // ── Modal: salvar promoção no bot ─────────────────────────────────────────
@@ -514,14 +527,18 @@ export default function PromoApp() {
 
   // When data comes from Promobit (curated feed, not a search engine),
   // apply query + minDiscount filtering client-side so the user's filters still work.
+  // Also enforce source guard so ML products never leak into Amazon/Shopee tabs.
   const products = useMemo(() => {
     let list = sortProducts(rawProducts, sortKey);
+    // Safety filter: garante que só produtos da fonte correta aparecem na aba
+    if (source === 'amazon') list = list.filter(p => (p as AmazonProduct).source === 'amazon');
+    if (source === 'shopee') list = list.filter(p => (p as ShopeeProduct).source === 'shopee');
     if (dataSource === 'promobit') {
       if (query.trim()) list = list.filter(p => p.title.toLowerCase().includes(query.toLowerCase()));
       list = list.filter(p => p.discount_percent >= minDiscount);
     }
     return list;
-  }, [rawProducts, sortKey, dataSource, query, minDiscount]);
+  }, [rawProducts, sortKey, dataSource, query, minDiscount, source]);
 
   const accentColor = source === 'ml' ? '#00D4FF' : source === 'amazon' ? '#FF9900' : '#EE4D2D';
   const accentGrad  = source === 'ml'
