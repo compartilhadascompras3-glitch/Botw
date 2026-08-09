@@ -5,7 +5,7 @@ import { Search, RefreshCw, Zap, TrendingDown, Filter, MessageSquare, ArrowUpDow
 import { ProductCard } from '@/components/ProductCard';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { AddToBotModal } from '@/components/AddToBotModal';
-import { refreshMessagesFromDb } from '@/hooks/use-messages-db';
+import { useMessagesDb } from '@/hooks/use-messages-db';
 import type { MLProduct } from '@/app/api/ml-deals/route';
 import type { AmazonProduct } from '@/lib/promobit';
 import type { ShopeeProduct } from '@/lib/promobit';
@@ -204,6 +204,9 @@ export default function PromoApp() {
   // Modal state
   const [modalProduct, setModalProduct] = useState<AnyProduct | null>(null);
   const [modalSaveStatus, setModalSaveStatus] = useState<'idle' | 'saving' | 'done' | 'error'>('idle');
+
+  // Hook de mensagens — garante que o store Zustand é atualizado ao salvar
+  const { addMessage } = useMessagesDb();
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -490,23 +493,14 @@ export default function PromoApp() {
       }
     } catch { /* sem imagem */ }
 
-    const id = crypto.randomUUID();
-    const res = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, text, mediaDataUrl, mediaName, mediaType, sendOnce: true, sortOrder: 999, createdAt: Date.now() }),
-    });
+    // Usa addMessage do hook — atualiza o store Zustand E persiste no banco
+    await addMessage({ text, mediaDataUrl, mediaName, mediaType, sendOnce: true });
 
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      throw new Error(`Erro ${res.status}: ${errBody.slice(0, 120) || 'falha ao salvar'}`);
-    }
     // Registra o produto como adicionado
     saveAddedId(product.id);
     setAddedIds((prev) => new Set([...prev, product.id]));
     setBotAddedCount((c) => c + 1);
-    setTimeout(() => refreshMessagesFromDb(), 600);
-  }, []);
+  }, [addMessage]);
 
   // ── Derived values ───────────────────────────────────────────────────────────
   const categories = source === 'ml' ? ML_CATEGORIES : source === 'amazon' ? AMAZON_CATEGORIES : SHOPEE_CATEGORIES;
