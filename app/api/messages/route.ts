@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { messages } from '@/db/schemas/messages';
 import { eq, asc } from 'drizzle-orm';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {

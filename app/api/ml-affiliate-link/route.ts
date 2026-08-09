@@ -3,7 +3,7 @@
  * Body: { url: string }
  * Gera link de afiliado autenticado (meli.la) usando access_token salvo no banco.
  */
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { settings as settingsTable } from '@/db/schemas/settings';

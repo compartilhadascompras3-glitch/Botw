@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { messages } from '@/db/schemas/messages';
 import { eq } from 'drizzle-orm';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 // PATCH /api/messages/:id — atualiza texto, mídia ou sendOnce
