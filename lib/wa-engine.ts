@@ -118,20 +118,23 @@ export async function getState(): Promise<WaState> {
     };
     const connState = connData?.instance?.state ?? 'close';
 
+    // Se conectado, retorna imediatamente — não chama /connect nem gera QR
     if (connState === 'open') {
       return { status: 'ready', message: 'WhatsApp conectado!', qr: null };
     }
 
-    // Busca QR
-    const qrData = await evReq('GET', `/instance/connect/${instance}`) as {
-      base64?: string;
-      qrcode?: { base64?: string };
-    };
-    const b64 = qrData?.base64 ?? qrData?.qrcode?.base64 ?? null;
+    // Só busca QR se explicitamente desconectado
+    if (connState === 'close' || connState === 'connecting') {
+      const qrData = await evReq('GET', `/instance/connect/${instance}`) as {
+        base64?: string;
+        qrcode?: { base64?: string };
+      };
+      const b64 = qrData?.base64 ?? qrData?.qrcode?.base64 ?? null;
 
-    if (b64) {
-      const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
-      return { status: 'qr', message: 'Escaneie o QR Code com o WhatsApp', qr };
+      if (b64) {
+        const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+        return { status: 'qr', message: 'Escaneie o QR Code com o WhatsApp', qr };
+      }
     }
 
     return { status: 'connecting', message: 'Aguardando QR Code…', qr: null };
