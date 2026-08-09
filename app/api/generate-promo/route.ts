@@ -264,29 +264,13 @@ async function callModelOnce(model: string, imageBase64: string, mimeType: strin
 
 /**
  * Chama o provider OpenAI-compatível com o modelo configurado.
- * No OpenRouter, se o modelo estiver com rate-limit (429) ou indisponível,
- * tenta automaticamente os próximos modelos grátis com visão da lista.
+ * No OpenRouter, se o modelo estiver com rate-limit (429), pula imediatamente
+ * para o próximo provider (Reactus) em vez de tentar todos os modelos gratuitos
+ * — isso evita timeout de 30s no Cloudflare Workers.
  */
 async function callOpenAICompatible(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
-  const candidates = isOpenRouterProvider()
-    ? [LLM_MODEL, ...FREE_VISION_FALLBACKS.filter((m) => m !== LLM_MODEL)]
-    : [LLM_MODEL];
-
-  let lastError: unknown;
-  for (const model of candidates) {
-    try {
-      return await callModelOnce(model, imageBase64, mimeType, linkLine);
-    } catch (err) {
-      lastError = err;
-      const msg = String(err);
-      // Só tenta o próximo modelo se for rate-limit/indisponibilidade; erros
-      // de autenticação (401/403) ou de imagem inválida não se resolvem trocando modelo.
-      const isRetryable = msg.includes('429') || msg.includes('404') || msg.includes('rate-limit') || msg.includes('temporarily');
-      if (!isRetryable) throw err;
-      console.warn(`generate-promo: modelo ${model} indisponível, tentando próximo...`);
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  // Tenta apenas o modelo principal configurado
+  return await callModelOnce(LLM_MODEL, imageBase64, mimeType, linkLine);
 }
 
 /** Fallback: chama o llm_server SSE da Reactus/HappySeeds (formato Anthropic). */
@@ -317,6 +301,7 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
       'content-type': 'application/json',
     },
     body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(55000),
   });
 
   if (!res.ok) {
@@ -334,19 +319,42 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
     } catch { /* segue para parse genérico */ }
   }
 
+  // Busca o evento completed em qualquer formato de separação de linha
+  const completedMatch = sseText.match(/event:\s*llm_server\.completed\s*\ndata:\s*({[\s\S]*?})\s*(?:\n|$)/);
+  if (completedMatch) {
+    try {
+      const envelope = JSON.parse(completedMatch[1]) as {
+        status: string;
+        data: { content: { type: string; text: string }[] };
+      };
+      if (envelope.status === 'succeeded') {
+        const rawText = envelope.data?.content?.find((c) => c.type === 'text')?.text ?? '';
+        if (rawText) return extractResult(rawText);
+      }
+    } catch {
+      // JSON mal-formado — tenta o parse linha a linha abaixo
+    }
+  }
+
+  // Fallback: parse linha a linha (mais tolerante)
   for (const chunk of sseText.split('\n\n')) {
-    const eventLine = chunk.split('\n').find((l) => l.startsWith('event:'));
-    const dataLine  = chunk.split('\n').find((l) => l.startsWith('data:'));
+    const lines = chunk.split('\n');
+    const eventLine = lines.find((l) => l.startsWith('event:'));
+    const dataLine  = lines.find((l) => l.startsWith('data:'));
     if (!eventLine || !dataLine) continue;
     if (eventLine.replace('event:', '').trim() !== 'llm_server.completed') continue;
 
-    const envelope = JSON.parse(dataLine.replace('data:', '').trim()) as {
-      status: string;
-      data: { content: { type: string; text: string }[] };
-    };
-    if (envelope.status !== 'succeeded') continue;
-    const rawText = envelope.data?.content?.find((c) => c.type === 'text')?.text ?? '';
-    if (rawText) return extractResult(rawText);
+    try {
+      const envelope = JSON.parse(dataLine.replace('data:', '').trim()) as {
+        status: string;
+        data: { content: { type: string; text: string }[] };
+      };
+      if (envelope.status !== 'succeeded') continue;
+      const rawText = envelope.data?.content?.find((c) => c.type === 'text')?.text ?? '';
+      if (rawText) return extractResult(rawText);
+    } catch {
+      continue;
+    }
   }
   throw new Error('IA não retornou resposta válida.');
 }
@@ -397,21 +405,22 @@ export async function POST(req: NextRequest) {
 
     const linkLine = productContext ? `\n\n${productContext}` : '';
 
-    // Prioriza OpenAI-compatível (OpenRouter em produção); usa Reactus como fallback (só no sandbox).
+    // Prioriza Reactus (Claude) quando disponível — mais confiável que modelos grátis OpenRouter.
+    // Usa OpenAI-compatível como fallback quando Reactus não está disponível.
     let result: PromoResult;
-    if (hasOpenAI) {
+    if (hasReactus) {
       try {
-        result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
+        result = await callReactus(cleanB64, mimeType, linkLine);
       } catch (err) {
-        if (hasReactus) {
-          console.warn('generate-promo: provider OpenAI falhou, tentando Reactus:', String(err).slice(0, 200));
-          result = await callReactus(cleanB64, mimeType, linkLine);
+        if (hasOpenAI) {
+          console.warn('generate-promo: Reactus falhou, tentando OpenAI-compatível:', String(err).slice(0, 200));
+          result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
         } else {
           throw err;
         }
       }
     } else {
-      result = await callReactus(cleanB64, mimeType, linkLine);
+      result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
     }
 
     if (!result.versions.length) {
