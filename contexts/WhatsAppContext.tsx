@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 
 const WA_SERVER = '/api/wa';
 
@@ -37,56 +37,56 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
     qr: null,
   });
   const [waking, setWaking] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusRef = useRef<WaStatus>('disconnected');
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const startPolling = (fast: boolean) => {
-      if (intervalId) clearInterval(intervalId);
-      // Quando conectado, poll lento (30s) só para detectar desconexão
-      // Quando desconectado/QR, poll rápido (3s) para pegar o QR
-      intervalId = setInterval(async () => {
-        try {
-          const r = await fetch(`${WA_SERVER}/status`);
-          if (!r.ok) return;
-          const d = await r.json() as WaState;
-          setState(prev => {
-            // Se mudou de ready para não-ready, acelera o poll
-            if (prev.status === 'ready' && d.status !== 'ready') {
-              startPolling(true);
-            }
-            // Se mudou de não-ready para ready, desacelera o poll
-            if (prev.status !== 'ready' && d.status === 'ready') {
-              startPolling(false);
-            }
-            return { status: d.status, message: d.message, qr: d.qr ?? null };
-          });
-        } catch {
-          // rede caiu — mantém estado atual
-        }
-      }, fast ? 3000 : 30000);
-    };
-
-    async function init() {
-      setWaking(false);
-      // Primeiro poll imediato
-      try {
-        const r = await fetch(`${WA_SERVER}/status`);
-        if (r.ok) {
-          const d = await r.json() as WaState;
-          setState({ status: d.status, message: d.message, qr: d.qr ?? null });
-          // Começa rápido se não conectado, lento se já conectado
-          startPolling(d.status !== 'ready');
-        } else {
-          startPolling(true);
-        }
-      } catch {
-        startPolling(true);
+    function stopPolling() {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     }
 
+    async function pollOnce() {
+      try {
+        const r = await fetch(`${WA_SERVER}/status`);
+        if (!r.ok) return;
+        const d = await r.json() as WaState;
+        const prevStatus = statusRef.current;
+        statusRef.current = d.status;
+        setState({ status: d.status, message: d.message, qr: d.qr ?? null });
+
+        // Ajusta velocidade do poll baseado no novo estado
+        if (prevStatus !== d.status) {
+          // Mudou de ready → não-ready: acelera (3s)
+          if (prevStatus === 'ready' && d.status !== 'ready') {
+            stopPolling();
+            intervalRef.current = setInterval(pollOnce, 3000);
+          }
+          // Mudou de não-ready → ready: desacelera (30s)
+          if (prevStatus !== 'ready' && d.status === 'ready') {
+            stopPolling();
+            intervalRef.current = setInterval(pollOnce, 30000);
+          }
+        }
+      } catch {
+        // rede caiu — mantém estado atual
+      }
+    }
+
+    async function init() {
+      setWaking(false);
+      // Poll imediato
+      await pollOnce();
+      // Começa intervalos: rápido se não conectado, lento se já conectado
+      stopPolling();
+      const fast = statusRef.current !== 'ready';
+      intervalRef.current = setInterval(pollOnce, fast ? 3000 : 30000);
+    }
+
     init();
-    return () => { if (intervalId) clearInterval(intervalId); };
+    return () => stopPolling();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

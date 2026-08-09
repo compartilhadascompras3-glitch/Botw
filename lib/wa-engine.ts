@@ -123,33 +123,75 @@ export async function getState(): Promise<WaState> {
       return { status: 'ready', message: 'WhatsApp conectado!', qr: null };
     }
 
-    // Só busca QR se explicitamente desconectado
+    // Só busca QR se explicitamente desconectado ou conectando
     if (connState === 'close' || connState === 'connecting') {
-      const qrData = await evReq('GET', `/instance/connect/${instance}`) as {
-        base64?: string;
-        qrcode?: { base64?: string };
-      };
+      let qrData: { base64?: string; qrcode?: { base64?: string } } | null = null;
+      try {
+        qrData = await evReq('GET', `/instance/connect/${instance}`) as {
+          base64?: string;
+          qrcode?: { base64?: string };
+        };
+      } catch {
+        // ignora erro ao buscar QR
+      }
+
       const b64 = qrData?.base64 ?? qrData?.qrcode?.base64 ?? null;
 
       if (b64) {
         const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
         return { status: 'qr', message: 'Escaneie o QR Code com o WhatsApp', qr };
       }
+
+      // Sem QR disponível — pode ser que a sessão foi invalidada (device_removed).
+      // Retorna disconnected para o usuário poder reconectar.
+      return { status: 'disconnected', message: 'Sessão encerrada. Clique em Conectar para gerar um novo QR Code.', qr: null };
     }
 
-    return { status: 'connecting', message: 'Aguardando QR Code…', qr: null };
+    return { status: 'disconnected', message: 'Desconectado', qr: null };
   } catch (err) {
-    return { status: 'disconnected', message: `Erro ao conectar: ${String(err)}`, qr: null };
+    return { status: 'disconnected', message: `Erro: ${String(err).slice(0, 100)}`, qr: null };
   }
 }
 
 /**
- * connect — garante que a instância existe na Evolution API.
+ * connect — garante que a instância existe e reseta sessão inválida.
+ * Se já existe mas está em estado inválido (device_removed etc), faz logout primeiro.
  * O frontend pollerá /api/wa/status para obter o QR.
  */
 export async function connect(): Promise<void> {
   const { instance } = await getEvolutionConfig();
-  await ensureInstance(instance);
+
+  // Verifica se a instância já existe
+  let exists = false;
+  let currentState = 'close';
+  try {
+    const list = await evReq('GET', `/instance/fetchInstances?instanceName=${instance}`) as Array<{
+      name?: string; connectionStatus?: string;
+    }>;
+    if (Array.isArray(list) && list.length > 0) {
+      exists = true;
+      currentState = list[0]?.connectionStatus ?? 'close';
+    }
+  } catch { /* ignora */ }
+
+  if (!exists) {
+    // Cria instância nova
+    await evReq('POST', '/instance/create', {
+      instanceName: instance,
+      qrcode: true,
+      integration: 'WHATSAPP-BAILEYS',
+    });
+    return;
+  }
+
+  // Se está open, não faz nada
+  if (currentState === 'open') return;
+
+  // Se está em estado inválido (connecting sem QR), faz logout para resetar
+  // Isso força a Evolution API a gerar um novo QR na próxima chamada de /connect
+  try {
+    await evReq('DELETE', `/instance/logout/${instance}`);
+  } catch { /* ignora erro de logout — instância pode não ter sessão */ }
 }
 
 export async function disconnect(): Promise<void> {
