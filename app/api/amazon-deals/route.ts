@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchPromobitOffers, toAmazon } from '@/lib/promobit';
+import { fetchPromobitOffers, toAmazon, STORE_ID_AMAZON } from '@/lib/promobit';
 
 export type { AmazonProduct } from '@/lib/promobit';
 
@@ -8,10 +8,7 @@ export async function GET(_req: NextRequest) {
   try {
     const all = await fetchPromobitOffers();
     const products = all
-      .filter(o =>
-        (o.store_name === 'Amazon' || o.store_domain?.includes('amazon.com')) &&
-        o.offer_status_name !== 'FINISHED'
-      )
+      .filter(o => o.store_id === STORE_ID_AMAZON && o.offer_status_name !== 'FINISHED')
       .map(toAmazon);
     return NextResponse.json({ products, hasMore: false, source: 'promobit' });
   } catch (err) {

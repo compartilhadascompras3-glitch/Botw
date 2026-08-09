@@ -5,9 +5,14 @@
 
 const API_BASE = 'https://api.promobit.com.br';
 const PHOTO_BASE = 'https://i.promobit.com.br';
-const PAGES_TO_FETCH = 4;
+const PAGES_TO_FETCH = 10; // mais páginas para garantir produtos suficientes por loja
 const PAGE_LIMIT = 100;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// IDs reais de loja na Promobit (verificados via API)
+export const STORE_ID_AMAZON   = 83;
+export const STORE_ID_SHOPEE   = 504;
+export const STORE_ID_ML       = 572;
 
 const FETCH_HEADERS = {
   'User-Agent':
@@ -28,6 +33,7 @@ export interface PromobitOffer {
   offer_slug: string;
   store_name: string;
   store_domain: string;
+  store_id: number;
   offer_status_name?: string;
 }
 
