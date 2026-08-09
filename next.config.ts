@@ -14,7 +14,15 @@ const nextConfig: NextConfig = {
     PROJECT_ID: process.env.HAPPYSEEDS_PROJECT_ID ?? '',
     REACTUS_BASE_URL: process.env.REACTUS_BASE_URL ?? '',
   },
-  serverExternalPackages: [],
+  serverExternalPackages: [
+    '@whiskeysockets/baileys',
+    'blake3-wasm',
+    'libsignal',
+    'jimp',
+    'sharp',
+    'music-metadata',
+    'pino',
+  ],
   allowedDevOrigins: [
     '**.*.*',
   ],
