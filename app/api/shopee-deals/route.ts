@@ -8,7 +8,10 @@ export async function GET(_req: NextRequest) {
   try {
     const all = await fetchPromobitOffers();
     const products = all
-      .filter(o => o.store_name === 'Shopee' && o.offer_status_name !== 'FINISHED')
+      .filter(o =>
+        (o.store_name === 'Shopee' || o.store_domain?.includes('shopee.com')) &&
+        o.offer_status_name !== 'FINISHED'
+      )
       .map(toShopee);
     return NextResponse.json({ products, hasMore: false, source: 'promobit' });
   } catch (err) {
