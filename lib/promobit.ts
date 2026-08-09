@@ -1,0 +1,141 @@
+/**
+ * Shared Promobit API client with in-process cache.
+ * Fetches multiple pages from api.promobit.com.br and caches for 5 minutes.
+ */
+
+const API_BASE = 'https://api.promobit.com.br';
+const PHOTO_BASE = 'https://i.promobit.com.br';
+const PAGES_TO_FETCH = 4;
+const PAGE_LIMIT = 100;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const FETCH_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  Accept: 'application/json',
+  'Accept-Encoding': 'identity',
+  Origin: 'https://www.promobit.com.br',
+  Referer: 'https://www.promobit.com.br/',
+};
+
+export interface PromobitOffer {
+  offer_id: number;
+  offer_title: string;
+  offer_price: number;
+  offer_old_price: number;
+  offer_discont_percentage: number;
+  offer_photo: string;
+  offer_slug: string;
+  store_name: string;
+  store_domain: string;
+  offer_status_name?: string;
+}
+
+export interface AmazonProduct {
+  id: string;
+  asin: string;
+  title: string;
+  price: number;
+  original_price: number | null;
+  discount_percent: number;
+  thumbnail: string;
+  permalink: string;
+  source: 'amazon';
+  stars?: number;
+  reviews?: number;
+  prime?: boolean;
+}
+
+export interface ShopeeProduct {
+  id: string;
+  title: string;
+  price: number;
+  original_price: number | null;
+  discount_percent: number;
+  thumbnail: string;
+  permalink: string;
+  source: 'shopee';
+  stars?: number;
+  reviews?: number;
+  sold?: number;
+}
+
+// In-process cache (survives across requests within the same Node.js instance)
+let cacheData: PromobitOffer[] = [];
+let cacheTs = 0;
+
+export async function fetchPromobitOffers(): Promise<PromobitOffer[]> {
+  const now = Date.now();
+  if (cacheData.length && now - cacheTs < CACHE_TTL_MS) return cacheData;
+
+  const seen = new Set<number>();
+  const all: PromobitOffer[] = [];
+  let after: string | null = null;
+
+  for (let page = 0; page < PAGES_TO_FETCH; page++) {
+    const url = new URL(`${API_BASE}/offers`);
+    url.searchParams.set('sort', 'latest');
+    url.searchParams.set('limit', String(PAGE_LIMIT));
+    url.searchParams.set('only_national', '1');
+    if (after) url.searchParams.set('after', after);
+
+    const res = await fetch(url.toString(), {
+      headers: FETCH_HEADERS,
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) break;
+
+    const data = await res.json() as { offers?: PromobitOffer[]; after?: string };
+    for (const o of data.offers ?? []) {
+      if (!seen.has(o.offer_id)) {
+        seen.add(o.offer_id);
+        all.push(o);
+      }
+    }
+
+    const next = data.after ?? null;
+    if (!next || next === after) break;
+    after = next;
+  }
+
+  cacheData = all;
+  cacheTs = now;
+  return all;
+}
+
+function photoUrl(path: string): string {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  return `${PHOTO_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function offerPermalink(offer: PromobitOffer): string {
+  return `https://www.promobit.com.br/oferta/${offer.offer_slug}`;
+}
+
+export function toAmazon(o: PromobitOffer): AmazonProduct {
+  return {
+    id: String(o.offer_id),
+    asin: String(o.offer_id),
+    title: o.offer_title,
+    price: o.offer_price,
+    original_price: o.offer_old_price || null,
+    discount_percent: Math.round(o.offer_discont_percentage ?? 0),
+    thumbnail: photoUrl(o.offer_photo),
+    permalink: offerPermalink(o),
+    source: 'amazon',
+  };
+}
+
+export function toShopee(o: PromobitOffer): ShopeeProduct {
+  return {
+    id: String(o.offer_id),
+    title: o.offer_title,
+    price: o.offer_price,
+    original_price: o.offer_old_price || null,
+    discount_percent: Math.round(o.offer_discont_percentage ?? 0),
+    thumbnail: photoUrl(o.offer_photo),
+    permalink: offerPermalink(o),
+    source: 'shopee',
+  };
+}
