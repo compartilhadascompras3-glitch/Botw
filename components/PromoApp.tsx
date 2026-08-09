@@ -536,48 +536,22 @@ export default function PromoApp() {
     <div className="min-h-screen" style={{ background: '#050505', color: '#fff' }}>
       {/* Sub-header */}
       <div className="w-full" style={{ background: 'rgba(5,5,5,0.7)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex flex-col gap-2">
-          {/* Linha 1: Logo + Source tabs + botões direita */}
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 flex flex-col gap-2">
+          {/* Linha 1: Logo + Settings (+ contador) */}
+          <div className="flex items-center gap-2">
             {/* Logo */}
             <div className="flex items-center gap-2 shrink-0">
               <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: accentGrad }}>
                 <Zap size={12} fill="black" color="black" />
               </div>
-              <span className="font-bold text-white text-sm hidden sm:block" style={{ letterSpacing: '-0.03em' }}>
+              <span className="font-bold text-white text-sm" style={{ letterSpacing: '-0.03em' }}>
                 Promo<span style={{ background: accentGrad, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Radar</span>
               </span>
             </div>
 
-            {/* Source tabs — Amazon temporariamente desativada */}
-            <div className="flex items-center gap-1 rounded-full p-1" style={{ background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <button
-                onClick={() => handleSourceChange('ml')}
-                className="text-xs font-semibold px-3 py-1 rounded-full cursor-pointer transition-all whitespace-nowrap"
-                style={source === 'ml' ? { background: 'linear-gradient(135deg, #00D4FF 0%, #00FF88 100%)', color: '#000' } : { color: '#666' }}
-              >
-                🛍️ Mercado Livre
-              </button>
-              <button
-                onClick={() => handleSourceChange('amazon')}
-                className="text-xs font-semibold px-3 py-1 rounded-full cursor-pointer transition-all whitespace-nowrap"
-                style={source === 'amazon' ? { background: 'linear-gradient(135deg, #FF9900 0%, #FF6B00 100%)', color: '#000' } : { color: '#666' }}
-              >
-                🛒 Amazon
-              </button>
-              <button
-                onClick={() => handleSourceChange('shopee')}
-                className="text-xs font-semibold px-3 py-1 rounded-full cursor-pointer transition-all whitespace-nowrap"
-                style={source === 'shopee' ? { background: 'linear-gradient(135deg, #EE4D2D 0%, #FF8C00 100%)', color: '#fff' } : { color: '#666' }}
-              >
-                🧡 Shopee
-              </button>
-            </div>
-
-            {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Bot counter + Settings */}
+            {/* Bot counter */}
             {botAddedCount > 0 && (
               <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full shrink-0" style={{ background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.25)' }}>
                 <MessageSquare size={11} />
@@ -587,6 +561,31 @@ export default function PromoApp() {
             <div className="shrink-0">
               <SettingsPanel settings={settings} onSave={saveSettings} />
             </div>
+          </div>
+
+          {/* Linha 2: Source tabs (scroll horizontal no mobile) */}
+          <div className="flex items-center gap-1 rounded-full p-1 overflow-x-auto" style={{ background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)', scrollbarWidth: 'none' }}>
+            <button
+              onClick={() => handleSourceChange('ml')}
+              className="text-xs font-semibold px-3 py-1 rounded-full cursor-pointer transition-all whitespace-nowrap flex-1"
+              style={source === 'ml' ? { background: 'linear-gradient(135deg, #00D4FF 0%, #00FF88 100%)', color: '#000' } : { color: '#666' }}
+            >
+              🛍️ Mercado Livre
+            </button>
+            <button
+              onClick={() => handleSourceChange('amazon')}
+              className="text-xs font-semibold px-3 py-1 rounded-full cursor-pointer transition-all whitespace-nowrap flex-1"
+              style={source === 'amazon' ? { background: 'linear-gradient(135deg, #FF9900 0%, #FF6B00 100%)', color: '#000' } : { color: '#666' }}
+            >
+              🛒 Amazon
+            </button>
+            <button
+              onClick={() => handleSourceChange('shopee')}
+              className="text-xs font-semibold px-3 py-1 rounded-full cursor-pointer transition-all whitespace-nowrap flex-1"
+              style={source === 'shopee' ? { background: 'linear-gradient(135deg, #EE4D2D 0%, #FF8C00 100%)', color: '#fff' } : { color: '#666' }}
+            >
+              🧡 Shopee
+            </button>
           </div>
 
           {/* Linha 2: Search */}

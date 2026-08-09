@@ -145,11 +145,12 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-full transition-all duration-150 cursor-pointer"
+        className="flex items-center gap-2 text-sm font-medium px-3 py-2 sm:px-4 sm:py-2.5 rounded-full transition-all duration-150 cursor-pointer"
         style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#A0A0A0' }}
+        title="Configurações"
       >
         <Settings size={15} />
-        Configurações
+        <span className="hidden sm:inline">Configurações</span>
       </button>
 
       {open && mounted && createPortal(modal, document.body)}
