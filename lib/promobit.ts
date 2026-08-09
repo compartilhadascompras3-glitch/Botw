@@ -110,7 +110,7 @@ function photoUrl(path: string): string {
 }
 
 function offerPermalink(offer: PromobitOffer): string {
-  return `https://www.promobit.com.br/oferta/${offer.offer_slug}`;
+  return `https://www.promobit.com.br/oferta/${offer.offer_slug}/ir-a-loja/`;
 }
 
 export function toAmazon(o: PromobitOffer): AmazonProduct {
