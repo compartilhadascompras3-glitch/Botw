@@ -278,8 +278,39 @@ export function SchedulerPanel() {
   const isWaReady = waState.status === 'ready';
 
   // ── Carrega estado inicial do scheduler ──────────────────────────────────
+  // Tenta wa-server; se falhar (Render dormindo), usa o banco como fallback
   useEffect(() => {
-    waFetch('scheduler/state').then(setSched).catch(() => {});
+    waFetch('scheduler/state')
+      .then(setSched)
+      .catch(() => {
+        // wa-server offline — carrega do banco
+        fetch('/api/bot-state')
+          .then((r) => r.json())
+          .then((d: {
+            targets?: Target[];
+            intervalMinutes?: number;
+            jitterPercent?: number;
+            scheduleEnabled?: boolean;
+            scheduleStart?: string;
+            scheduleEnd?: string;
+            statusEnabled?: boolean;
+            groupsEnabled?: boolean;
+            currentIndex?: number;
+          }) => {
+            setSched((s) => ({
+              ...s,
+              targets:         d.targets         ?? s.targets,
+              intervalMinutes: d.intervalMinutes  ?? s.intervalMinutes,
+              jitterPercent:   d.jitterPercent    ?? s.jitterPercent,
+              scheduleEnabled: d.scheduleEnabled  ?? s.scheduleEnabled,
+              scheduleStart:   d.scheduleStart    ?? s.scheduleStart,
+              scheduleEnd:     d.scheduleEnd      ?? s.scheduleEnd,
+              statusEnabled:   d.statusEnabled    ?? s.statusEnabled,
+              groupsEnabled:   d.groupsEnabled    ?? s.groupsEnabled,
+            }));
+          })
+          .catch(() => {});
+      });
   }, []);
 
   // ── Recebe atualizações do scheduler via SSE ──────────────────────────────
@@ -344,6 +375,34 @@ export function SchedulerPanel() {
     else setGroups([]);
   }, [isWaReady, loadGroups]);
 
+  // ── Salva sched no banco sempre que targets ou config mudam ─────────────
+  const schedSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (schedSaveTimer.current) clearTimeout(schedSaveTimer.current);
+    schedSaveTimer.current = setTimeout(() => {
+      fetch('/api/bot-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targets:         sched.targets,
+          intervalMinutes: sched.intervalMinutes,
+          jitterPercent:   sched.jitterPercent,
+          scheduleEnabled: sched.scheduleEnabled,
+          scheduleStart:   sched.scheduleStart,
+          scheduleEnd:     sched.scheduleEnd,
+          statusEnabled:   sched.statusEnabled,
+          groupsEnabled:   sched.groupsEnabled,
+          currentIndex:    sched.currentIndex ?? 0,
+        }),
+      }).catch(() => {});
+    }, 800);
+    return () => { if (schedSaveTimer.current) clearTimeout(schedSaveTimer.current); };
+  }, [
+    sched.targets, sched.intervalMinutes, sched.jitterPercent,
+    sched.scheduleEnabled, sched.scheduleStart, sched.scheduleEnd,
+    sched.statusEnabled, sched.groupsEnabled, sched.currentIndex,
+  ]);
+
   // ── Helpers de config ────────────────────────────────────────────────────
   const updateConfig = useCallback(async (patch: Partial<SchedulerState>) => {
     setSched((s) => ({ ...s, ...patch }));
@@ -387,7 +446,11 @@ export function SchedulerPanel() {
         setSched(updated);
         totalSecondsRef.current = sched.intervalMinutes * 60;
       }
-    } catch (e) { console.error('scheduler toggle error:', e); }
+    } catch (e) {
+      console.error('scheduler toggle error:', e);
+      setSendResult({ ok: false, msg: 'Servidor do bot offline. Aguarde 30s e tente novamente (servidor acorda automaticamente).' });
+      setTimeout(() => setSendResult(null), 8000);
+    }
   };
 
   // ── Envio manual imediato ────────────────────────────────────────────────
