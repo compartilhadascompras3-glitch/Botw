@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getEvolutionConfig, setEvolutionConfig } from '@/lib/wa-engine';

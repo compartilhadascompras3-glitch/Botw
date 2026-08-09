@@ -4,7 +4,7 @@ import { history } from '@/db/schemas/history';
 import { eq, desc } from 'drizzle-orm';
 import { Target } from '@/store/botStore';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // GET /api/history — lista histórico (mais recente primeiro, limite 200)

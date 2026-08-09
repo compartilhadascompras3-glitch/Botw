@@ -2,7 +2,7 @@
  * GET /api/ml-auth/callback
  * Recebe o code do OAuth ML, troca por access_token e salva no banco.
  */
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { settings as settingsTable } from '@/db/schemas/settings';

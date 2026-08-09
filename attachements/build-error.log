@@ -1,0 +1,115 @@
+opennextjs-cloudflare build failed: exit status 1
+--- build log ---
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: @whiskeysockets/baileys@7.0.0-rc14,                 │
+│   esbuild@0.18.20, esbuild@0.25.12, esbuild@0.25.4, esbuild@0.27.3,          │
+│   esbuild@0.28.1, protobufjs@7.6.5, workerd@1.20260515.1.                    │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 2.2s using pnpm v10.33.4
+
+┌─────────────────────────────┐
+│ OpenNext — Cloudflare build │
+└─────────────────────────────┘
+
+App directory: /home/ubuntu/workspace/project
+Next.js version : 16.2.6
+@opennextjs/cloudflare version: 1.19.10
+@opennextjs/aws version: 4.0.2
+WARN workerd compatibility_date: 2025-03-01, consider updating your wrangler config to a more recent date to benefit from the latest features and fixes.
+
+┌─────────────────────────────────┐
+│ OpenNext — Building Next.js app │
+└─────────────────────────────────┘
+
+
+> vibe-web-template@0.1.0 build /home/ubuntu/workspace/project
+> next build --webpack
+
+[dotenv@17.3.1] injecting env (21) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+▲ Next.js 16.2.6 (webpack)
+- Environments: .env.production, .env
+
+  Creating an optimized production build ...
+[dotenv@17.3.1] injecting env (21) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.3.1] injecting env (21) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.3.1] injecting env (21) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+✓ Compiled successfully in 9.4s
+  Skipping validation of types
+  Finished TypeScript config validation in 8ms ...
+  Collecting page data using 1 worker ...
+⚠ Using edge runtime on a page currently disables static generation for that page
+  Generating static pages using 1 worker (0/11) ...
+  Generating static pages using 1 worker (2/11) 
+  Generating static pages using 1 worker (5/11) 
+  Generating static pages using 1 worker (8/11) 
+✓ Generating static pages using 1 worker (11/11) in 249ms
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/amazon-deals
+├ ƒ /api/amazon-parse
+├ ƒ /api/download-project
+├ ƒ /api/generate-promo
+├ ƒ /api/health
+├ ƒ /api/history
+├ ƒ /api/image-proxy
+├ ƒ /api/messages
+├ ƒ /api/messages/[id]
+├ ƒ /api/ml-affiliate-link
+├ ƒ /api/ml-auth
+├ ƒ /api/ml-auth/callback
+├ ƒ /api/ml-categories
+├ ƒ /api/ml-deals
+├ ƒ /api/promobit-deals
+├ ƒ /api/settings
+├ ƒ /api/shopee-deals
+├ ƒ /api/store-link
+├ ƒ /api/wa/[...path]
+├ ƒ /api/wa/events
+└ ƒ /api/wa/wake
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+┌──────────────────────────────┐
+│ OpenNext — Generating bundle │
+└──────────────────────────────┘
+
+Bundling middleware function...
+Bundling static assets...
+Bundling cache assets...
+Building server function: default...
+file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+aws@4.0.2_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19.2.4__react@19.2.4_/node_modules/@opennextjs/aws/dist/build/copyTracedFiles.js:128
+                throw new Error(`
+                      ^
+
+Error: 
+--------------------------------------------------------------------------------
+app/api/history/route cannot use the edge runtime.
+OpenNext requires edge runtime function to be defined in a separate function.
+See the docs for more information on how to bundle edge runtime functions.
+--------------------------------------------------------------------------------
+        
+    at computeCopyFilesForPage (file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+aws@4.0.2_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19.2.4__react@19.2.4_/node_modules/@opennextjs/aws/dist/build/copyTracedFiles.js:128:23)
+    at file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+aws@4.0.2_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19.2.4__react@19.2.4_/node_modules/@opennextjs/aws/dist/build/copyTracedFiles.js:193:9
+    at Array.forEach (<anonymous>)
+    at copyTracedFiles (file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+aws@4.0.2_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19.2.4__react@19.2.4_/node_modules/@opennextjs/aws/dist/build/copyTracedFiles.js:192:12)
+    at generateBundle (file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+cloudflare@1.19.10_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19_ca4096472dbcff61d91c79ce529cee62/node_modules/@opennextjs/cloudflare/dist/cli/build/open-next/createServerBundle.js:121:60)
+    at createServerBundle (file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+cloudflare@1.19.10_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19_ca4096472dbcff61d91c79ce529cee62/node_modules/@opennextjs/cloudflare/dist/cli/build/open-next/createServerBundle.js:75:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async build (file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+cloudflare@1.19.10_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19_ca4096472dbcff61d91c79ce529cee62/node_modules/@opennextjs/cloudflare/dist/cli/build/build.js:87:5)
+    at async buildCommand (file:///home/ubuntu/workspace/project/node_modules/.pnpm/@opennextjs+cloudflare@1.19.10_next@16.2.6_@babel+core@7.29.0_react-dom@19.2.4_react@19_ca4096472dbcff61d91c79ce529cee62/node_modules/@opennextjs/cloudflare/dist/cli/commands/build.js:40:5)
+
+Node.js v22.23.2
