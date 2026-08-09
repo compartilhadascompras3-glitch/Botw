@@ -39,6 +39,8 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   const [waking, setWaking] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusRef = useRef<WaStatus>('disconnected');
+  // Guarda o QR atual para não trocar enquanto o usuário está tentando escanear
+  const currentQrRef = useRef<string | null>(null);
 
   useEffect(() => {
     function stopPolling() {
@@ -55,19 +57,34 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
         const d = await r.json() as WaState;
         const prevStatus = statusRef.current;
         statusRef.current = d.status;
-        setState({ status: d.status, message: d.message, qr: d.qr ?? null });
+
+        setState((prev) => {
+          const newQr = d.qr ?? null;
+          // Se já tem QR na tela, não troca — mantém o atual até o usuário escanear
+          // ou o status mudar para conectando/conectado
+          const keepOldQr = prev.status === 'qr' && !!prev.qr && d.status === 'qr';
+          return {
+            status: d.status,
+            message: d.message,
+            qr: keepOldQr ? prev.qr : newQr,
+          };
+        });
+        currentQrRef.current = d.qr ?? null;
 
         // Ajusta velocidade do poll baseado no novo estado
         if (prevStatus !== d.status) {
-          // Mudou de ready → não-ready: acelera (3s)
-          if (prevStatus === 'ready' && d.status !== 'ready') {
-            stopPolling();
-            intervalRef.current = setInterval(pollOnce, 3000);
-          }
-          // Mudou de não-ready → ready: desacelera (30s)
-          if (prevStatus !== 'ready' && d.status === 'ready') {
+          if (d.status === 'ready') {
+            // Conectou — desacelera polling
             stopPolling();
             intervalRef.current = setInterval(pollOnce, 30000);
+          } else if (prevStatus === 'ready') {
+            // Desconectou — acelera polling
+            stopPolling();
+            intervalRef.current = setInterval(pollOnce, 3000);
+          } else if (d.status === 'connecting') {
+            // Conectando — poll rápido para detectar conexão logo
+            stopPolling();
+            intervalRef.current = setInterval(pollOnce, 1500);
           }
         }
       } catch {
@@ -82,7 +99,13 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
       // Começa intervalos: rápido se não conectado, lento se já conectado
       stopPolling();
       const fast = statusRef.current !== 'ready';
-      intervalRef.current = setInterval(pollOnce, fast ? 3000 : 30000);
+      // No modo QR, poll lento (15s) — QR do WhatsApp dura ~20s,
+      // mas não precisamos trocar a imagem na tela o tempo todo
+      const interval = statusRef.current === 'ready' ? 30000
+                     : statusRef.current === 'connecting' ? 1500
+                     : statusRef.current === 'qr' ? 15000
+                     : fast ? 3000 : 30000;
+      intervalRef.current = setInterval(pollOnce, interval);
     }
 
     init();
@@ -92,6 +115,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(async () => {
     setState((prev) => ({ ...prev, status: 'connecting', message: 'Conectando...' }));
+    currentQrRef.current = null; // limpa QR antigo para aceitar o novo
     try {
       await fetch(`${WA_SERVER}/connect`, { method: 'POST' });
     } catch {
