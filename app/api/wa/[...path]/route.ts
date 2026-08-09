@@ -20,7 +20,7 @@ export async function GET(
 
   switch (segment) {
     case 'status':
-      return NextResponse.json(getState());
+      return NextResponse.json(await getState());
 
     case 'groups': {
       const groups = await getGroups();
@@ -41,7 +41,7 @@ export async function POST(
 
   switch (segment) {
     case 'connect':
-      connect(); // não awaita — inicia em background
+      await connect();
       return NextResponse.json({ ok: true });
 
     case 'disconnect':

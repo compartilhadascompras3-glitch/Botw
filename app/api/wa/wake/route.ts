@@ -6,6 +6,6 @@ import { getState } from '@/lib/wa-engine';
 
 // Wake agora apenas retorna o estado atual — a engine inicia sob demanda
 export async function POST() {
-  const state = getState();
+  const state = await getState();
   return NextResponse.json({ started: true, message: state.message });
 }

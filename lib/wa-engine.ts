@@ -1,8 +1,8 @@
 /**
- * wa-engine.ts — Evolution API client.
- * Funciona em qualquer ambiente (HappySeeds/Cloudflare Workers, Railway, Render).
+ * wa-engine.ts — Evolution API client, stateless.
+ * Funciona em Cloudflare Workers (sem setInterval, sem globalThis state).
+ * O frontend faz polling de /api/wa/status a cada 3s.
  */
-import { EventEmitter } from 'node:events';
 
 export type WaStatus = 'disconnected' | 'qr' | 'connecting' | 'ready' | 'auth_failure';
 
@@ -19,7 +19,6 @@ const DEFAULT_KEY = 'botwa123';
 const DEFAULT_INSTANCE = 'whatsapp-bot';
 
 export async function getEvolutionConfig() {
-  // Lê do banco se disponível, senão usa env/default
   try {
     const { db } = await import('@/db');
     const { settings } = await import('@/db/schemas/settings');
@@ -66,7 +65,7 @@ async function evReq(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unk
     method,
     headers: { 'Content-Type': 'application/json', apikey: apiKey },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
@@ -75,108 +74,86 @@ async function evReq(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unk
   return res.json();
 }
 
-// ─── In-process state ─────────────────────────────────────────────────────────
+// ─── Stateless helpers (sem estado em memória) ────────────────────────────────
 
-const G = globalThis as Record<string, unknown>;
-if (!G.__waEngine) {
-  G.__waEngine = {
-    state: { status: 'disconnected', message: 'Clique em Conectar WhatsApp', qr: null } as WaState,
-    emitter: new EventEmitter(),
-    pollTimer: null as ReturnType<typeof setInterval> | null,
-  };
-}
-const engine = G.__waEngine as {
-  state: WaState;
-  emitter: EventEmitter;
-  pollTimer: ReturnType<typeof setInterval> | null;
-};
-
-function setState(next: Partial<WaState>) {
-  engine.state = { ...engine.state, ...next };
-  engine.emitter.emit('state', engine.state);
-}
-
-export function getState(): WaState { return engine.state; }
-
-export function onStateChange(cb: (s: WaState) => void): () => void {
-  engine.emitter.on('state', cb);
-  return () => engine.emitter.off('state', cb);
-}
-
-// ─── Instance + polling ───────────────────────────────────────────────────────
-
-async function ensureInstance(): Promise<void> {
-  const { instance } = await getEvolutionConfig();
+// Garante que a instância existe
+async function ensureInstance(instance: string): Promise<void> {
   try {
-    await evReq('GET', `/instance/fetchInstances?instanceName=${instance}`);
-  } catch {
-    await evReq('POST', '/instance/create', {
-      instanceName: instance,
-      qrcode: true,
-      integration: 'WHATSAPP-BAILEYS',
-    });
-  }
+    const list = await evReq('GET', `/instance/fetchInstances?instanceName=${instance}`) as unknown[];
+    if (Array.isArray(list) && list.length > 0) return; // já existe
+  } catch { /* ignora, tenta criar */ }
+  await evReq('POST', '/instance/create', {
+    instanceName: instance,
+    qrcode: true,
+    integration: 'WHATSAPP-BAILEYS',
+  });
 }
 
-async function pollStatus() {
-  try {
-    const { instance } = await getEvolutionConfig();
-    const data = await evReq('GET', `/instance/connectionState/${instance}`) as { instance?: { state?: string } };
-    const state = data?.instance?.state ?? 'close';
+// ─── Stub de EventEmitter para compatibilidade (não usado no CF Workers) ─────
 
-    if (state === 'open') {
-      setState({ status: 'ready', message: 'WhatsApp conectado!', qr: null });
-      stopPolling();
-      return;
-    }
-
-    // Busca QR
-    const qrData = await evReq('GET', `/instance/connect/${instance}`) as {
-      base64?: string; qrcode?: { base64?: string };
-    };
-    const b64 = qrData?.qrcode?.base64 ?? qrData?.base64 ?? null;
-    if (b64) {
-      const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
-      setState({ status: 'qr', message: 'Escaneie o QR Code com o WhatsApp', qr });
-    } else {
-      setState({ status: 'connecting', message: 'Aguardando QR Code…', qr: null });
-    }
-  } catch (err) {
-    setState({ status: 'disconnected', message: `Erro: ${String(err)}`, qr: null });
-    stopPolling();
-  }
+class NoopEmitter {
+  on() { return this; }
+  off() { return this; }
+  emit() { return false; }
 }
 
-function startPolling() {
-  if (engine.pollTimer) return;
-  engine.pollTimer = setInterval(pollStatus, 4000);
-}
-
-function stopPolling() {
-  if (engine.pollTimer) { clearInterval(engine.pollTimer); engine.pollTimer = null; }
+const _emitter = new NoopEmitter();
+export function onStateChange(_cb: (s: WaState) => void): () => void {
+  return () => {};
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function connect(): Promise<void> {
-  if (engine.state.status === 'connecting' || engine.state.status === 'qr') return;
-  setState({ status: 'connecting', message: 'Iniciando conexão…', qr: null });
+/**
+ * getState — busca o estado atual diretamente da Evolution API.
+ * Deve ser chamado pelo endpoint /api/wa/status a cada poll do frontend.
+ */
+export async function getState(): Promise<WaState> {
   try {
-    await ensureInstance();
-    await pollStatus();
-    startPolling();
+    const { instance } = await getEvolutionConfig();
+
+    // Verifica estado de conexão
+    const connData = await evReq('GET', `/instance/connectionState/${instance}`) as {
+      instance?: { state?: string };
+    };
+    const connState = connData?.instance?.state ?? 'close';
+
+    if (connState === 'open') {
+      return { status: 'ready', message: 'WhatsApp conectado!', qr: null };
+    }
+
+    // Busca QR
+    const qrData = await evReq('GET', `/instance/connect/${instance}`) as {
+      base64?: string;
+      qrcode?: { base64?: string };
+    };
+    const b64 = qrData?.base64 ?? qrData?.qrcode?.base64 ?? null;
+
+    if (b64) {
+      const qr = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+      return { status: 'qr', message: 'Escaneie o QR Code com o WhatsApp', qr };
+    }
+
+    return { status: 'connecting', message: 'Aguardando QR Code…', qr: null };
   } catch (err) {
-    setState({ status: 'disconnected', message: `Erro: ${String(err)}`, qr: null });
+    return { status: 'disconnected', message: `Erro ao conectar: ${String(err)}`, qr: null };
   }
 }
 
+/**
+ * connect — garante que a instância existe na Evolution API.
+ * O frontend pollerá /api/wa/status para obter o QR.
+ */
+export async function connect(): Promise<void> {
+  const { instance } = await getEvolutionConfig();
+  await ensureInstance(instance);
+}
+
 export async function disconnect(): Promise<void> {
-  stopPolling();
   try {
     const { instance } = await getEvolutionConfig();
     await evReq('DELETE', `/instance/logout/${instance}`);
   } catch { /* ignora */ }
-  setState({ status: 'disconnected', message: 'Desconectado', qr: null });
 }
 
 export async function sendMessage(
@@ -188,7 +165,8 @@ export async function sendMessage(
     const number = to.replace(/\D/g, '');
     if (media?.dataUrl) {
       const base64 = media.dataUrl.replace(/^data:[^;]+;base64,/, '');
-      const mediaType = media.type.startsWith('image/') ? 'image' : media.type.startsWith('video/') ? 'video' : 'document';
+      const mediaType = media.type.startsWith('image/') ? 'image'
+        : media.type.startsWith('video/') ? 'video' : 'document';
       await evReq('POST', `/message/sendMedia/${instance}`, {
         number, mediatype: mediaType, media: base64, fileName: media.name, caption: text,
       });
@@ -204,19 +182,30 @@ export async function sendMessage(
 export async function getGroups(): Promise<{ id: string; name: string; participantsCount: number }[]> {
   try {
     const { instance } = await getEvolutionConfig();
-    const data = await evReq('GET', `/group/fetchAllGroups/${instance}?getParticipants=false`) as Array<{ id: string; subject: string; size: number }>;
-    return (Array.isArray(data) ? data : []).map(g => ({ id: g.id, name: g.subject, participantsCount: g.size ?? 0 }));
+    const data = await evReq('GET', `/group/fetchAllGroups/${instance}?getParticipants=false`) as Array<{
+      id: string; subject: string; size: number;
+    }>;
+    return (Array.isArray(data) ? data : []).map(g => ({
+      id: g.id, name: g.subject, participantsCount: g.size ?? 0,
+    }));
   } catch { return []; }
 }
 
-export async function postStatus(text: string, media?: { dataUrl: string; type: string; name: string }): Promise<{ ok: boolean; error?: string }> {
+export async function postStatus(
+  text: string,
+  media?: { dataUrl: string; type: string; name: string }
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const { instance } = await getEvolutionConfig();
     if (media?.dataUrl) {
       const base64 = media.dataUrl.replace(/^data:[^;]+;base64,/, '');
-      await evReq('POST', `/message/sendStatus/${instance}`, { type: 'image', content: base64, caption: text, statusJidList: ['status@broadcast'] });
+      await evReq('POST', `/message/sendStatus/${instance}`, {
+        type: 'image', content: base64, caption: text, statusJidList: ['status@broadcast'],
+      });
     } else {
-      await evReq('POST', `/message/sendStatus/${instance}`, { type: 'text', content: text, statusJidList: ['status@broadcast'] });
+      await evReq('POST', `/message/sendStatus/${instance}`, {
+        type: 'text', content: text, statusJidList: ['status@broadcast'],
+      });
     }
     return { ok: true };
   } catch (err) {
