@@ -46,16 +46,6 @@ const DEFAULT_SCHEDULER: SchedulerState = {
   nextFireAt: null,
 };
 
-async function waFetch(path: string, method = 'GET', body?: object) {
-  const res = await fetch(`/api/wa/${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<SchedulerState>;
-}
-
 // ── MultiGroupPicker ──────────────────────────────────────────────────────────
 
 function MultiGroupPicker({
@@ -236,7 +226,7 @@ function MultiGroupPicker({
 
 export function SchedulerPanel() {
   const { messages, currentIndex: storeIndex } = useBotStore();
-  const { state: waState, fetchGroups } = useWhatsApp();
+  const { state: waState, fetchGroups, sendMessage, postStatus } = useWhatsApp();
   const { addHistoryDb } = useHistoryDb();
   const { refreshMessages } = useMessagesDb();
 
@@ -252,97 +242,108 @@ export function SchedulerPanel() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const totalSecondsRef = useRef(0);
 
-  // ── Detecta interação do usuário (input, click, foco em campo) ───────────
-  const userActiveRef = useRef(false);
-  const userActiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    const markActive = () => {
-      userActiveRef.current = true;
-      if (userActiveTimerRef.current) clearTimeout(userActiveTimerRef.current);
-      // Considera "inativo" após 8 segundos sem interação
-      userActiveTimerRef.current = setTimeout(() => { userActiveRef.current = false; }, 8000);
-    };
-    window.addEventListener('mousedown', markActive);
-    window.addEventListener('keydown', markActive);
-    window.addEventListener('focusin', markActive);
-    window.addEventListener('touchstart', markActive);
-    return () => {
-      window.removeEventListener('mousedown', markActive);
-      window.removeEventListener('keydown', markActive);
-      window.removeEventListener('focusin', markActive);
-      window.removeEventListener('touchstart', markActive);
-      if (userActiveTimerRef.current) clearTimeout(userActiveTimerRef.current);
-    };
-  }, []);
-
   const isWaReady = waState.status === 'ready';
 
   // ── Carrega estado inicial do scheduler ──────────────────────────────────
   // Tenta wa-server; se falhar (Render dormindo), usa o banco como fallback
   useEffect(() => {
-    waFetch('scheduler/state')
-      .then(setSched)
-      .catch(() => {
-        // wa-server offline — carrega do banco
-        fetch('/api/bot-state')
-          .then((r) => r.json())
-          .then((d: {
-            targets?: Target[];
-            intervalMinutes?: number;
-            jitterPercent?: number;
-            scheduleEnabled?: boolean;
-            scheduleStart?: string;
-            scheduleEnd?: string;
-            statusEnabled?: boolean;
-            groupsEnabled?: boolean;
-            currentIndex?: number;
-          }) => {
-            setSched((s) => ({
-              ...s,
-              targets:         d.targets         ?? s.targets,
-              intervalMinutes: d.intervalMinutes  ?? s.intervalMinutes,
-              jitterPercent:   d.jitterPercent    ?? s.jitterPercent,
-              scheduleEnabled: d.scheduleEnabled  ?? s.scheduleEnabled,
-              scheduleStart:   d.scheduleStart    ?? s.scheduleStart,
-              scheduleEnd:     d.scheduleEnd      ?? s.scheduleEnd,
-              statusEnabled:   d.statusEnabled    ?? s.statusEnabled,
-              groupsEnabled:   d.groupsEnabled    ?? s.groupsEnabled,
-            }));
-          })
-          .catch(() => {});
-      });
+    // Scheduler roda no cliente — carrega config do banco
+    fetch('/api/bot-state')
+      .then((r) => r.json())
+      .then((d: {
+        targets?: Target[];
+        intervalMinutes?: number;
+        jitterPercent?: number;
+        scheduleEnabled?: boolean;
+        scheduleStart?: string;
+        scheduleEnd?: string;
+        statusEnabled?: boolean;
+        groupsEnabled?: boolean;
+        currentIndex?: number;
+      }) => {
+        setSched((s) => ({
+          ...s,
+          targets:         d.targets         ?? s.targets,
+          intervalMinutes: d.intervalMinutes  ?? s.intervalMinutes,
+          jitterPercent:   d.jitterPercent    ?? s.jitterPercent,
+          scheduleEnabled: d.scheduleEnabled  ?? s.scheduleEnabled,
+          scheduleStart:   d.scheduleStart    ?? s.scheduleStart,
+          scheduleEnd:     d.scheduleEnd      ?? s.scheduleEnd,
+          statusEnabled:   d.statusEnabled    ?? s.statusEnabled,
+          groupsEnabled:   d.groupsEnabled    ?? s.groupsEnabled,
+        }));
+      })
+      .catch(() => {});
   }, []);
 
-  // ── Recebe atualizações do scheduler via SSE ──────────────────────────────
-  useEffect(() => {
-    const es = new EventSource('/api/wa/events');
-    // Guarda o nextFireAt anterior para detectar quando um disparo automático ocorreu:
-    // após o envio, o servidor avança nextFireAt para o próximo ciclo.
-    // Se o nextFireAt anterior JÁ PASSOU e o novo é futuro, houve um disparo.
-    let prevNextFireAt: number | null = null;
-    let initialized = false;
+  // ── Timer cliente: dispara mensagens sem depender de servidor externo ──────
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    es.addEventListener('scheduler', (e) => {
-      try {
-        const state = JSON.parse((e as MessageEvent).data) as SchedulerState;
+  const fireNow = useCallback(async () => {
+    if (!isWaReady) return;
+    const currentMessages = useBotStore.getState().messages;
+    const currentIdx = useBotStore.getState().currentIndex;
+    const msg = currentMessages[currentIdx] ?? currentMessages[0];
+    if (!msg) return;
 
-        if (initialized && state.running && prevNextFireAt !== null && state.nextFireAt !== null) {
-          const prevWasPast = prevNextFireAt < Date.now();
-          const newIsFuture = (state.nextFireAt ?? 0) > Date.now();
-          if (prevWasPast && newIsFuture && state.nextFireAt !== prevNextFireAt) {
-            // Disparo automático detectado — atualiza dados se o usuário não estiver ativo
-            if (!userActiveRef.current) {
-              setTimeout(() => { refreshMessages(); }, 1500);
-            }
-          }
-        }
+    const targets = sched.targets;
+    const results: string[] = [];
 
-        prevNextFireAt = state.nextFireAt ?? null;
-        initialized = true;
-        setSched(state);
-      } catch {}
+    if (sched.groupsEnabled && targets.length > 0) {
+      for (const t of targets) {
+        const media = msg.mediaDataUrl
+          ? { dataUrl: msg.mediaDataUrl, type: msg.mediaType ?? 'image/jpeg', name: msg.mediaName ?? 'promo.jpg' }
+          : undefined;
+        const r = await sendMessage(t.id, msg.text, media);
+        results.push(r.ok ? `✓ ${t.name}` : `✗ ${t.name}: ${r.error}`);
+      }
+    }
+
+    if (sched.statusEnabled) {
+      const media = msg.mediaDataUrl
+        ? { dataUrl: msg.mediaDataUrl, type: msg.mediaType ?? 'image/jpeg', name: msg.mediaName ?? 'promo.jpg' }
+        : undefined;
+      const r = await postStatus(msg.text, media);
+      results.push(r.ok ? '✓ Status' : `✗ Status: ${r.error}`);
+    }
+
+    const allOk = results.every((r) => r.startsWith('✓'));
+    addHistoryDb({
+      messageId: msg.id,
+      messageText: msg.text,
+      hasMedia: !!msg.mediaDataUrl,
+      targets: targets,
+      sentAt: Date.now(),
     });
-    return () => es.close();
+
+    setSendResult({ ok: allOk, msg: results.join(' · ') || 'Enviado.' });
+    setTimeout(() => { refreshMessages(); setSendResult(null); }, 3000);
+
+    // Avança índice
+    useBotStore.getState().advanceIndex();
+  }, [isWaReady, sched.groupsEnabled, sched.statusEnabled, sched.targets, addHistoryDb, refreshMessages]);
+
+  // Agenda próximo disparo
+  const scheduleNext = useCallback((intervalMin: number, jitter: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const base = intervalMin * 60 * 1000;
+    const jitterMs = base * (jitter / 100);
+    const delay = base + (Math.random() * 2 - 1) * jitterMs;
+    const nextAt = Date.now() + delay;
+    setSched((s) => ({ ...s, nextFireAt: nextAt }));
+    timerRef.current = setTimeout(async () => {
+      await fireNow();
+      // Reagenda se ainda running
+      setSched((s) => {
+        if (s.running) scheduleNext(s.intervalMinutes, s.jitterPercent);
+        return s;
+      });
+    }, delay);
+  }, [fireNow]);
+
+  // Limpa timer ao desmontar
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
 
   // ── Countdown local (atualiza a cada segundo com base em nextFireAt do servidor) ──
@@ -404,12 +405,8 @@ export function SchedulerPanel() {
   ]);
 
   // ── Helpers de config ────────────────────────────────────────────────────
-  const updateConfig = useCallback(async (patch: Partial<SchedulerState>) => {
+  const updateConfig = useCallback((patch: Partial<SchedulerState>) => {
     setSched((s) => ({ ...s, ...patch }));
-    try {
-      const updated = await waFetch('scheduler/config', 'POST', patch);
-      setSched(updated);
-    } catch (e) { console.error('scheduler/config error:', e); }
   }, []);
 
   const handleAddTarget = useCallback((t: Target) => {
@@ -424,34 +421,20 @@ export function SchedulerPanel() {
   }, [sched.targets, updateConfig]);
 
   // ── Toggle ligar/desligar ────────────────────────────────────────────────
-  const handleToggle = async () => {
-    try {
-      if (sched.running) {
-        const updated = await waFetch('scheduler/stop', 'POST');
-        setSched(updated);
-        setSecondsLeft(0);
-      } else {
-        // Envia config completa junto com o start
-        const updated = await waFetch('scheduler/start', 'POST', {
-          intervalMinutes: sched.intervalMinutes,
-          jitterPercent:   sched.jitterPercent,
-          scheduleEnabled: sched.scheduleEnabled,
-          scheduleStart:   sched.scheduleStart,
-          scheduleEnd:     sched.scheduleEnd,
-          statusEnabled:   sched.statusEnabled,
-          groupsEnabled:   sched.groupsEnabled,
-          targets:         sched.targets,
-          currentIndex:    storeIndex,
-        });
-        setSched(updated);
-        totalSecondsRef.current = sched.intervalMinutes * 60;
-      }
-    } catch (e) {
-      console.error('scheduler toggle error:', e);
-      setSendResult({ ok: false, msg: 'Servidor do bot offline. Aguarde 30s e tente novamente (servidor acorda automaticamente).' });
-      setTimeout(() => setSendResult(null), 8000);
+  const handleToggle = useCallback(() => {
+    if (sched.running) {
+      // Para o bot
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setSched((s) => ({ ...s, running: false, nextFireAt: null }));
+      setSecondsLeft(0);
+      totalSecondsRef.current = 0;
+    } else {
+      // Inicia o bot
+      setSched((s) => ({ ...s, running: true }));
+      totalSecondsRef.current = sched.intervalMinutes * 60;
+      scheduleNext(sched.intervalMinutes, sched.jitterPercent);
     }
-  };
+  }, [sched.running, sched.intervalMinutes, sched.jitterPercent, scheduleNext]);
 
   // ── Envio manual imediato ────────────────────────────────────────────────
   const handleSendNow = async () => {
@@ -460,9 +443,7 @@ export function SchedulerPanel() {
     setSendResult(null);
     try {
       if (isWaReady) {
-        // Disparo via servidor
-        await waFetch('scheduler/fire', 'POST');
-        setSendResult({ ok: true, msg: 'Enviando...' });
+        await fireNow();
         setTimeout(() => { refreshMessages(); setSendResult(null); }, 1200);
       } else {
         // fallback: abre WhatsApp Web
