@@ -40,6 +40,7 @@ export interface AmazonProduct {
   discount_percent: number;
   thumbnail: string;
   permalink: string;
+  slug?: string;
   source: 'amazon';
   stars?: number;
   reviews?: number;
@@ -54,6 +55,7 @@ export interface ShopeeProduct {
   discount_percent: number;
   thumbnail: string;
   permalink: string;
+  slug?: string;
   source: 'shopee';
   stars?: number;
   reviews?: number;
@@ -123,6 +125,7 @@ export function toAmazon(o: PromobitOffer): AmazonProduct {
     discount_percent: Math.round(o.offer_discont_percentage ?? 0),
     thumbnail: photoUrl(o.offer_photo),
     permalink: offerPermalink(o),
+    slug: o.offer_slug,
     source: 'amazon',
   };
 }
@@ -136,6 +139,7 @@ export function toShopee(o: PromobitOffer): ShopeeProduct {
     discount_percent: Math.round(o.offer_discont_percentage ?? 0),
     thumbnail: photoUrl(o.offer_photo),
     permalink: offerPermalink(o),
+    slug: o.offer_slug,
     source: 'shopee',
   };
 }

@@ -167,8 +167,18 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     }
   };
 
-  const openApp = () => {
+  const openApp = async () => {
     if (!product) return;
+    const slug = (product as { slug?: string }).slug;
+    if (slug) {
+      try {
+        const res = await fetch(`/api/store-link?slug=${encodeURIComponent(slug)}`);
+        if (res.ok) {
+          const data = await res.json() as { url?: string };
+          if (data.url) { window.open(data.url, '_blank', 'noopener,noreferrer'); setTimeout(() => linkInputRef.current?.focus(), 600); return; }
+        }
+      } catch { /* fallback */ }
+    }
     window.open(product.permalink, '_blank', 'noopener,noreferrer');
     setTimeout(() => linkInputRef.current?.focus(), 600);
   };
