@@ -40,8 +40,11 @@ export async function POST(req: NextRequest) {
     }).returning();
     return NextResponse.json(row, { status: 201 });
   } catch (err) {
-    console.error('[messages] POST error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const detail = err instanceof Error
+      ? { message: err.message, cause: String((err as NodeJS.ErrnoException).cause ?? '') }
+      : { message: String(err) }
+    console.error('[messages] POST error:', detail)
+    return NextResponse.json({ error: detail.message, cause: detail.cause }, { status: 500 });
   }
 }
 
