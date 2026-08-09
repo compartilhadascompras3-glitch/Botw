@@ -13,6 +13,9 @@ type AnyProduct = MLProduct | AmazonProduct | ShopeeProduct;
 function isAmazon(p: AnyProduct): p is AmazonProduct {
   return (p as AmazonProduct).source === 'amazon';
 }
+function isShopee(p: AnyProduct): p is ShopeeProduct {
+  return (p as ShopeeProduct).source === 'shopee';
+}
 
 interface AddToBotModalProps {
   product: AnyProduct | null;
@@ -186,9 +189,12 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
   if (!product) return null;
 
   const isAmz = isAmazon(product);
-  const accentColor = isAmz ? '#FF9900' : '#00D4FF';
-  const accentBg = isAmz ? 'rgba(255,153,0,0.12)' : 'rgba(0,212,255,0.12)';
-  const accentBorder = isAmz ? 'rgba(255,153,0,0.3)' : 'rgba(0,212,255,0.25)';
+  const isSpe = isShopee(product);
+  const storeName = isAmz ? 'Amazon' : isSpe ? 'Shopee' : 'Mercado Livre';
+  const storeIcon = isAmz ? '🛒' : isSpe ? '🧡' : '🛍️';
+  const accentColor = isAmz ? '#FF9900' : isSpe ? '#EE4D2D' : '#00D4FF';
+  const accentBg    = isAmz ? 'rgba(255,153,0,0.12)' : isSpe ? 'rgba(238,77,45,0.12)' : 'rgba(0,212,255,0.12)';
+  const accentBorder = isAmz ? 'rgba(255,153,0,0.3)' : isSpe ? 'rgba(238,77,45,0.3)' : 'rgba(0,212,255,0.25)';
 
   return (
     <div
@@ -208,7 +214,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white line-clamp-1 leading-tight">{product.title}</p>
               <p className="text-xs mt-0.5" style={{ color: accentColor }}>
-                {isAmz ? '🛒 Amazon' : '🛍️ Mercado Livre'} · -{product.discount_percent}%
+                {storeIcon} {storeName} · -{product.discount_percent}%
               </p>
             </div>
           </div>
@@ -250,7 +256,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
               style={{ background: accentBg, border: `1px solid ${accentBorder}`, color: accentColor }}
             >
               <ExternalLink size={12} />
-              Abrir {isAmz ? 'Amazon' : 'Mercado Livre'} → copiar link de afiliado
+              Abrir {storeName} → copiar link de afiliado
             </button>
           </div>
 
