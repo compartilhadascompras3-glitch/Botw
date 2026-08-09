@@ -11,6 +11,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.9.1
         version: 3.10.0(react-hook-form@7.72.1(react@19.2.4))
+      '@neondatabase/serverless':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@radix-ui/react-accordion':
         specifier: 1.2.12
         version: 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -121,7 +124,7 @@ importers:
         version: 17.3.1
       drizzle-orm:
         specifier: ^0.45.1
-        version: 0.45.1(@cloudflare/workers-types@4.20260519.1)(postgres@3.4.8)
+        version: 0.45.1(@cloudflare/workers-types@4.20260519.1)(@neondatabase/serverless@1.1.0)(postgres@3.4.8)
       embla-carousel-react:
         specifier: 8.6.0
         version: 8.6.0(react@19.2.4)
@@ -1794,6 +1797,10 @@ packages:
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
+
+  '@neondatabase/serverless@1.1.0':
+    resolution: {integrity: sha512-r3ZZhRjEcfEdKIZnoB1RusNgvHuaBRqfCzV4Gi+5A9yUX0S4HTws/ASWqt13wL4y4I+0rqsWGdA2w7EQXHi3+Q==}
+    engines: {node: '>=19.0.0'}
 
   '@next/env@16.2.6':
     resolution: {integrity: sha512-gd8HoHN4ufj73WmR3JmVolrpJR47ILK6LouP5xElPglaVxir6e1a7VzvTvDWkOoPXT9rkkTzyCxBu4yeZfZwcw==}
@@ -7506,6 +7513,8 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
+  '@neondatabase/serverless@1.1.0': {}
+
   '@next/env@16.2.6': {}
 
   '@next/eslint-plugin-next@16.1.6':
@@ -9410,9 +9419,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.45.1(@cloudflare/workers-types@4.20260519.1)(postgres@3.4.8):
+  drizzle-orm@0.45.1(@cloudflare/workers-types@4.20260519.1)(@neondatabase/serverless@1.1.0)(postgres@3.4.8):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260519.1
+      '@neondatabase/serverless': 1.1.0
       postgres: 3.4.8
 
   dunder-proto@1.0.1:
