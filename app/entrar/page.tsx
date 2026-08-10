@@ -33,16 +33,16 @@ const TESTIMONIALS = [
   { name: 'Fernanda L.', text: 'Já indiquei pra toda minha família, vale muito!', time: '2d atrás' },
 ];
 
-// Cores da marca: azul escuro + laranja
+// Cores da marca: azul escuro + laranja — tom da logo
 const BRAND = {
-  navy:    '#0E1A3D',
-  navyMid: '#162050',
+  navy:    '#060D24',
+  navyMid: '#0A1230',
   orange:  '#FF7A00',
   orangeHover: '#FF9A30',
   white:   '#FFFFFF',
   offWhite:'#E8ECF5',
-  muted:   '#8899BB',
-  quiet:   '#3A4D7A',
+  muted:   '#7A8FAD',
+  quiet:   '#2E3F60',
 };
 
 function PulseDot({ color = BRAND.orange }: { color?: string }) {
@@ -99,6 +99,7 @@ export default function LandingPage() {
     <div style={{ background: BRAND.navy, minHeight: '100vh', fontFamily: "'Inter', 'Segoe UI', sans-serif", color: BRAND.offWhite, overflowX: 'hidden' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        @keyframes bounce-down { 0%,100%{transform:translateY(0);opacity:0.6} 50%{transform:translateY(8px);opacity:1} }
         @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
         @keyframes scroll-x { from{transform:translateX(0)} to{transform:translateX(-50%)} }
         @keyframes fadeInUp { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
@@ -170,6 +171,14 @@ export default function LandingPage() {
               SEM SPAM · SAIR QUANDO QUISER · 100% GRATUITO
             </span>
           </div>
+        </div>
+
+        {/* Indicador de scroll */}
+        <div style={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, animation: 'bounce-down 1.8s ease infinite', cursor: 'default' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 10, color: BRAND.quiet, letterSpacing: '0.1em', textTransform: 'uppercase' }}>ver mais</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={BRAND.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </div>
       </section>
 
