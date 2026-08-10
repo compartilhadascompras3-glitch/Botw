@@ -171,14 +171,14 @@ export default function LandingPage() {
               SEM SPAM · SAIR QUANDO QUISER · 100% GRATUITO
             </span>
           </div>
-        </div>
 
-        {/* Indicador de scroll */}
-        <div style={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, animation: 'bounce-down 1.8s ease infinite', cursor: 'default' }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 10, color: BRAND.quiet, letterSpacing: '0.1em', textTransform: 'uppercase' }}>ver mais</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={BRAND.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          {/* Indicador de scroll */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 40, animation: 'bounce-down 1.8s ease infinite' }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 10, color: BRAND.quiet, letterSpacing: '0.1em', textTransform: 'uppercase' }}>ver mais</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={BRAND.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
         </div>
       </section>
 
