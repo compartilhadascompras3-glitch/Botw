@@ -16,7 +16,7 @@ const BTY_MODEL = 'claude-sonnet-4.6';
 // ── Provider 3: Groq (gratuito, limite generoso, vision via llama) ─────────────
 const GROQ_KEY_ENV = process.env.GROQ_API_KEY ?? '';
 const GROQ_BASE  = 'https://api.groq.com/openai/v1';
-const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const GROQ_MODEL = 'llama-3.3-70b-versatile'; // texto puro — usa dados do produto (título, preço, desconto)
 
 // Lê do banco se não estiver no env
 async function getGroqKey(): Promise<string> {
@@ -336,11 +336,12 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
   return extractResult(rawText);
 }
 
-/** Chama o Groq (llama-4-scout com visão, grátis) */
+/** Chama o Groq (llama-3.3-70b, texto puro — usa dados do produto) */
 async function callGroq(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
   const key = await getGroqKey();
   if (!key) throw new Error('GROQ_API_KEY não configurado.');
-  const dataUrl = `data:${mimeType};base64,${imageBase64}`;
+  // Groq não tem modelo de visão disponível — usa texto puro com os dados do produto
+  void imageBase64; void mimeType;
   const body = {
     model: GROQ_MODEL,
     temperature: 1.0,
@@ -349,10 +350,7 @@ async function callGroq(imageBase64: string, mimeType: string, linkLine: string)
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: [
-          { type: 'text', text: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. APENAS o JSON, zero texto fora do JSON.${linkLine}` },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
+        content: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. APENAS o JSON, zero texto fora do JSON.${linkLine}`,
       },
     ],
   };
