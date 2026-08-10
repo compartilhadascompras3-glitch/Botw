@@ -1,9 +1,5 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { Analytics } from '@vercel/analytics/next';
-import { AgentationGuard } from '@/components/AgentationGuard';
-import { HappySeedsWatermark } from '@/components/HappySeedsWatermark';
-import { WhatsAppProvider } from '@/contexts/WhatsAppContext';
 import './globals.css';
 import jsonMetadata from '../metadata.json';
 
@@ -26,12 +22,7 @@ export default function RootLayout({
         )}
       </head>
       <body className="antialiased">
-        <WhatsAppProvider>
-          {children}
-        </WhatsAppProvider>
-        <HappySeedsWatermark />
-        <AgentationGuard />
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        {children}
       </body>
     </html>
   );
