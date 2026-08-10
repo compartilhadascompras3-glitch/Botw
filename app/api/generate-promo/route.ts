@@ -541,8 +541,11 @@ export async function POST(req: NextRequest) {
         result = await callProvider(p);
         break;
       } catch (err) {
-        if (preferredProvider) throw err; // erro direto — sem fallback
-        console.warn(`generate-promo: ${p} falhou, tentando próximo:`, String(err).slice(0, 150));
+        const errStr = String(err);
+        // 402 = sem créditos no provider — faz fallback mesmo se provider foi escolhido manualmente
+        const isPaymentRequired = errStr.includes('402');
+        if (preferredProvider && !isPaymentRequired) throw err; // erro direto — sem fallback
+        console.warn(`generate-promo: ${p} falhou, tentando próximo:`, errStr.slice(0, 150));
         lastErr = err;
       }
     }
