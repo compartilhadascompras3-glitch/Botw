@@ -504,13 +504,11 @@ export async function POST(req: NextRequest) {
 
     const linkLine = productContext ? `\n\n${productContext}` : '';
 
-    // Determina ordem dos providers respeitando preferredProvider
-    // Se preferredProvider for definido, coloca esse provider primeiro; os demais ficam como fallback na ordem padrão.
+    // Se o usuário escolheu um provider específico, usa só ele (sem fallback).
+    // Se não escolheu (chamada automática), tenta na ordem padrão até um funcionar.
     type Provider = 'bty' | 'groq' | 'openrouter';
     const defaultOrder: Provider[] = ['bty', 'groq', 'openrouter'];
-    const providerOrder: Provider[] = preferredProvider
-      ? [preferredProvider, ...defaultOrder.filter(p => p !== preferredProvider)]
-      : defaultOrder;
+    const providerOrder: Provider[] = preferredProvider ? [preferredProvider] : defaultOrder;
 
     const available: Record<Provider, boolean> = {
       bty: hasReactus,
@@ -518,20 +516,30 @@ export async function POST(req: NextRequest) {
       openrouter: hasOpenAI,
     };
 
+    const PROVIDER_NAMES: Record<Provider, string> = {
+      bty: 'Claude (HappySeeds)',
+      groq: 'Groq llama',
+      openrouter: 'OpenRouter',
+    };
+
     const callProvider = (p: Provider) => {
-      if (p === 'bty')        return callReactus(cleanB64, mimeType, linkLine);
-      if (p === 'groq')       return callGroq(cleanB64, mimeType, linkLine);
+      if (p === 'bty')  return callReactus(cleanB64, mimeType, linkLine);
+      if (p === 'groq') return callGroq(cleanB64, mimeType, linkLine);
       return callOpenAICompatible(cleanB64, mimeType, linkLine);
     };
 
     let result: PromoResult | null = null;
     let lastErr: unknown;
     for (const p of providerOrder) {
-      if (!available[p]) continue;
+      if (!available[p]) {
+        if (preferredProvider) throw new Error(`${PROVIDER_NAMES[p]} não está configurado.`);
+        continue;
+      }
       try {
         result = await callProvider(p);
         break;
       } catch (err) {
+        if (preferredProvider) throw err; // erro direto — sem fallback
         console.warn(`generate-promo: ${p} falhou, tentando próximo:`, String(err).slice(0, 150));
         lastErr = err;
       }
