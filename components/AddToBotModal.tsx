@@ -3,10 +3,18 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   X, Loader2, Check, Copy, MessageSquare, ExternalLink,
-  RefreshCw, AlertCircle, Pencil
+  RefreshCw, AlertCircle, Pencil, ChevronDown
 } from 'lucide-react';
 import type { MLProduct } from '@/app/api/ml-deals/route';
 import type { AmazonProduct, ShopeeProduct } from '@/lib/promobit';
+
+type AiModel = 'bty' | 'groq' | 'openrouter';
+
+const MODEL_OPTIONS: { id: AiModel; label: string; desc: string }[] = [
+  { id: 'bty',         label: 'Claude (HappySeeds)', desc: 'Melhor qualidade · visão' },
+  { id: 'groq',        label: 'Groq llama',          desc: 'Rápido · texto' },
+  { id: 'openrouter',  label: 'OpenRouter',           desc: 'Fallback · grátis' },
+];
 
 type AnyProduct = MLProduct | AmazonProduct | ShopeeProduct;
 
@@ -43,6 +51,8 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiModel, setAiModel] = useState<AiModel>('bty');
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   // Texto editado (separado por versão para preservar edições ao navegar)
   const [editedTexts, setEditedTexts] = useState<string[]>([]);
@@ -67,7 +77,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     setAiError(null);
     setAffiliateLink('');
     setSaved(false);
-    generateTexts(product);
+    generateTexts(product, aiModel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product]);
 
@@ -84,7 +94,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     }
   }, [editedTexts, selectedIdx]);
 
-  const generateTexts = async (p: AnyProduct) => {
+  const generateTexts = async (p: AnyProduct, model: AiModel = aiModel) => {
     setAiLoading(true);
     setAiError(null);
     try {
@@ -116,6 +126,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
           originalPrice: p.original_price ?? undefined,
           discountPercent: p.discount_percent,
           coupon,
+          preferredProvider: model,
         }),
         signal: AbortSignal.timeout(40000),
       });
@@ -286,9 +297,47 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
                 Texto para o WhatsApp
               </p>
               <div className="flex items-center gap-1.5">
+                {/* Seletor de modelo */}
+                <div className="relative">
+                  <button
+                    onClick={() => setModelMenuOpen(v => !v)}
+                    className="flex items-center gap-1 text-xs cursor-pointer px-2.5 py-1 rounded-full transition-all"
+                    style={{ color: '#555', border: '1px solid rgba(255,255,255,0.07)', background: modelMenuOpen ? 'rgba(255,255,255,0.05)' : 'transparent' }}
+                  >
+                    <span style={{ color: '#888' }}>
+                      {MODEL_OPTIONS.find(m => m.id === aiModel)?.label.split(' ')[0]}
+                    </span>
+                    <ChevronDown size={9} />
+                  </button>
+                  {modelMenuOpen && (
+                    <div
+                      className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1"
+                      style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
+                    >
+                      {MODEL_OPTIONS.map(opt => (
+                        <button
+                          key={opt.id}
+                          onClick={() => { setAiModel(opt.id); setModelMenuOpen(false); }}
+                          className="w-full flex items-start gap-2.5 px-3.5 py-2.5 text-left cursor-pointer transition-all"
+                          style={{
+                            background: aiModel === opt.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+                          }}
+                        >
+                          <span className="text-xs font-semibold leading-tight mt-0.5" style={{ color: aiModel === opt.id ? '#fff' : '#aaa' }}>
+                            {opt.label}
+                          </span>
+                          {aiModel === opt.id && (
+                            <Check size={11} className="ml-auto shrink-0 mt-0.5" style={{ color: accentColor }} />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {!aiLoading && versions.length > 0 && (
                   <button
-                    onClick={() => { if (product) generateTexts(product); }}
+                    onClick={() => { if (product) generateTexts(product, aiModel); }}
                     className="flex items-center gap-1 text-xs cursor-pointer px-2.5 py-1 rounded-full transition-all"
                     style={{ color: '#555', border: '1px solid rgba(255,255,255,0.07)' }}
                   >

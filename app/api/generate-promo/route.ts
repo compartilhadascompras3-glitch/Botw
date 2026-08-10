@@ -482,8 +482,9 @@ export async function POST(req: NextRequest) {
       originalPrice?: number;
       discountPercent?: number;
       coupon?: string | null;
+      preferredProvider?: 'bty' | 'groq' | 'openrouter';
     };
-    const { imageBase64, mimeType, link, title, price, originalPrice, discountPercent, coupon } = body;
+    const { imageBase64, mimeType, link, title, price, originalPrice, discountPercent, coupon, preferredProvider } = body;
 
     if (!imageBase64 || !mimeType) {
       return NextResponse.json({ error: 'imageBase64 e mimeType são obrigatórios.' }, { status: 400 });
@@ -503,38 +504,39 @@ export async function POST(req: NextRequest) {
 
     const linkLine = productContext ? `\n\n${productContext}` : '';
 
-    // Ordem: BTY/Claude → Groq (grátis, vision) → OpenRouter (grátis)
-    let result: PromoResult;
-    if (hasReactus) {
+    // Determina ordem dos providers respeitando preferredProvider
+    // Se preferredProvider for definido, coloca esse provider primeiro; os demais ficam como fallback na ordem padrão.
+    type Provider = 'bty' | 'groq' | 'openrouter';
+    const defaultOrder: Provider[] = ['bty', 'groq', 'openrouter'];
+    const providerOrder: Provider[] = preferredProvider
+      ? [preferredProvider, ...defaultOrder.filter(p => p !== preferredProvider)]
+      : defaultOrder;
+
+    const available: Record<Provider, boolean> = {
+      bty: hasReactus,
+      groq: hasGroq,
+      openrouter: hasOpenAI,
+    };
+
+    const callProvider = (p: Provider) => {
+      if (p === 'bty')        return callReactus(cleanB64, mimeType, linkLine);
+      if (p === 'groq')       return callGroq(cleanB64, mimeType, linkLine);
+      return callOpenAICompatible(cleanB64, mimeType, linkLine);
+    };
+
+    let result: PromoResult | null = null;
+    let lastErr: unknown;
+    for (const p of providerOrder) {
+      if (!available[p]) continue;
       try {
-        result = await callReactus(cleanB64, mimeType, linkLine);
+        result = await callProvider(p);
+        break;
       } catch (err) {
-        console.warn('generate-promo: BTY falhou, tentando Groq:', String(err).slice(0, 150));
-        if (hasGroq) {
-          try {
-            result = await callGroq(cleanB64, mimeType, linkLine);
-          } catch (err2) {
-            console.warn('generate-promo: Groq falhou, tentando OpenRouter:', String(err2).slice(0, 150));
-            if (hasOpenAI) {
-              result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
-            } else { throw err2; }
-          }
-        } else if (hasOpenAI) {
-          result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
-        } else { throw err; }
+        console.warn(`generate-promo: ${p} falhou, tentando próximo:`, String(err).slice(0, 150));
+        lastErr = err;
       }
-    } else if (hasGroq) {
-      try {
-        result = await callGroq(cleanB64, mimeType, linkLine);
-      } catch (err) {
-        console.warn('generate-promo: Groq falhou, tentando OpenRouter:', String(err).slice(0, 150));
-        if (hasOpenAI) {
-          result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
-        } else { throw err; }
-      }
-    } else {
-      result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
     }
+    if (!result) throw lastErr ?? new Error('Todos os providers falharam.');
 
     if (!result.versions.length) {
       return NextResponse.json({ error: 'IA não retornou versões. Tente com outra imagem.' }, { status: 502 });
