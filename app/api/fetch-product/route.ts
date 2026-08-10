@@ -144,29 +144,108 @@ async function fetchAmazon(url: string): Promise<FetchedProduct | null> {
 }
 
 // ── Shopee ────────────────────────────────────────────────────────────────────
+// A Shopee bloqueia scraping server-side com anti-bot (código 90309999).
+// Estratégia: extrai shopId+itemId da URL e busca na API da Promobit,
+// que já tem os dados do produto em cache.
+function extractShopeeIds(url: string): { shopId: string; itemId: string } | null {
+  // https://shopee.com.br/Produto-i.SHOPID.ITEMID
+  const m = url.match(/[.-]i\.(\d+)\.(\d+)/);
+  if (m) return { shopId: m[1], itemId: m[2] };
+  return null;
+}
+
 async function fetchShopee(url: string): Promise<FetchedProduct | null> {
+  const ids = extractShopeeIds(url);
+
+  // Extrai palavras-chave do slug da URL para busca por similaridade
+  const slugMatch = url.match(/shopee\.com\.br\/([^?#/]+)/);
+  const slugWords = (slugMatch?.[1] ?? '')
+    .replace(/-i\.\d+\.\d+.*/, '')          // remove o sufixo i.shopId.itemId
+    .split(/[-_]/)
+    .filter(w => w.length > 2 && !/^\d+$/.test(w))
+    .slice(0, 5)
+    .map(w => w.toLowerCase());
+
+  // Tenta buscar na Promobit
   try {
-    const res = await fetch(url, { headers: HEADERS, redirect: 'follow', signal: AbortSignal.timeout(12000) });
+    const pbRes = await fetch(
+      `https://api.promobit.com.br/offers?sort=latest&limit=200&only_national=1`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          Accept: 'application/json',
+          Origin: 'https://www.promobit.com.br',
+          Referer: 'https://www.promobit.com.br/',
+        },
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+    if (pbRes.ok) {
+      const pbData = await pbRes.json() as { offers?: { offer_id: number; offer_title: string; offer_price: number; offer_old_price: number; offer_discont_percentage: number; offer_photo: string; offer_slug: string; store_id: number; offer_coupon?: string | null }[] };
+      const shopeeOffers = (pbData.offers ?? []).filter(o => o.store_id === 504);
+
+      // Tenta match por itemId no slug
+      let match = ids
+        ? shopeeOffers.find(o => o.offer_slug?.includes(ids.itemId))
+        : null;
+
+      // Fallback: match por palavras do slug da URL
+      if (!match && slugWords.length >= 2) {
+        match = shopeeOffers.find(o => {
+          const titleLower = o.offer_title.toLowerCase();
+          const hits = slugWords.filter(w => titleLower.includes(w));
+          return hits.length >= Math.min(3, slugWords.length);
+        });
+      }
+
+      if (match) {
+        const photoUrl = match.offer_photo?.startsWith('http')
+          ? match.offer_photo
+          : `https://i.promobit.com.br${match.offer_photo?.startsWith('/') ? '' : '/'}${match.offer_photo ?? ''}`;
+        const original = match.offer_old_price || null;
+        const discount = original && original > match.offer_price
+          ? Math.round((1 - match.offer_price / original) * 100)
+          : Math.round(match.offer_discont_percentage ?? 0);
+        return {
+          id: `spe_${match.offer_id}`,
+          title: match.offer_title,
+          price: match.offer_price,
+          original_price: original,
+          discount_percent: discount,
+          thumbnail: photoUrl,
+          permalink: `https://www.promobit.com.br/oferta/${match.offer_slug}/ir-a-loja/`,
+          source: 'shopee',
+          coupon: match.offer_coupon || null,
+        };
+      }
+    }
+  } catch { /* segue para fallback HTML */ }
+
+  // Fallback: tenta extrair og:title/image do HTML da Shopee (pode funcionar eventualmente)
+  try {
+    const res = await fetch(url, {
+      headers: { ...HEADERS, 'Accept': 'text/html' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(12000),
+    });
     const html = await res.text();
 
-    // Shopee embute dados no __NEXT_DATA__ ou em meta tags
-    const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
-    const imgMatch   = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-    const priceMatch = html.match(/"price":(\d+)/)
-      ?? html.match(/class="pqTWkA"[^>]*>(R\$\s*[0-9.,]+)/);
+    const titleMatch = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
+    const imgMatch   = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
+    const priceMatch = html.match(/"price":(\d{5,})/);
 
     const title     = titleMatch?.[1]?.trim() ?? '';
     const thumbnail = imgMatch?.[1] ?? '';
-    const priceRaw  = priceMatch?.[1]?.replace(/[^\d.,]/g, '').replace('.','').replace(',','.') ?? '0';
-    const price     = parseFloat(priceRaw) / 100000 || parseFloat(priceRaw); // Shopee usa centavos*100
+    const priceRaw  = priceMatch?.[1] ?? '0';
+    const price     = parseInt(priceRaw, 10) / 100000;
 
-    if (!title || price <= 0) return null;
+    if (!title) return null;
 
     const finalUrl = res.url || url;
-    const idMatch  = finalUrl.match(/i\.(\d+)\.(\d+)/);
+    const idMatch  = finalUrl.match(/[.-]i\.(\d+)\.(\d+)/);
     const id = idMatch ? `${idMatch[1]}_${idMatch[2]}` : `spe_${Date.now()}`;
 
-    return { id, title, price, original_price: null, discount_percent: 0, thumbnail, permalink: finalUrl, source: 'shopee' };
+    return { id, title, price: price || 0, original_price: null, discount_percent: 0, thumbnail, permalink: finalUrl, source: 'shopee' };
   } catch { return null; }
 }
 
