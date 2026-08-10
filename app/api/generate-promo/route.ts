@@ -21,7 +21,7 @@ const BTY_MODEL = 'claude-sonnet-4.6';
 // ── Provider 3: Groq (gratuito, limite generoso, vision via llama) ─────────────
 const GROQ_KEY_ENV = process.env.GROQ_API_KEY ?? '';
 const GROQ_BASE  = 'https://api.groq.com/openai/v1';
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // texto puro — usa dados do produto (título, preço, desconto)
+const GROQ_MODEL = 'qwen/qwen3.6-27b'; // mais moderno — usa reasoning_effort:none para resposta direta
 
 // Lê do banco se não estiver no env
 async function getGroqKey(): Promise<string> {
@@ -433,6 +433,7 @@ async function callGroq(imageBase64: string, mimeType: string, linkLine: string)
     model: GROQ_MODEL,
     temperature: 1.0,
     max_tokens: 2500,
+    reasoning_effort: 'none', // desativa o modo thinking do Qwen3 para resposta direta
     messages: [
       { role: 'system', content: GROQ_SYSTEM_PROMPT },
       {
