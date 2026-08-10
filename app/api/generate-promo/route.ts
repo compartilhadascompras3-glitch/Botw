@@ -126,6 +126,48 @@ RESPONDA APENAS com JSON válido sem markdown:
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Normaliza espaçamento entre blocos da versão:
+ * - isca (1ª linha) → linha em branco → bloco do produto/preço → linha em branco → specs → linha em branco → link
+ */
+function normalizeSpacing(text: string): string {
+  const lines = text.split('\n').map(l => l.trimEnd());
+  const out: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const prev = out[out.length - 1] ?? '';
+    const next = lines[i + 1] ?? '';
+
+    // Nunca duas linhas em branco seguidas
+    if (line === '' && prev === '') continue;
+
+    // Garante linha em branco ANTES de linha que começa com emoji de produto/preço/link
+    if (line.match(/^[💰💳•👉🏷️]/u) && prev !== '') {
+      out.push('');
+    }
+
+    // Garante linha em branco DEPOIS da isca (1ª linha não vazia, sem emoji de preço)
+    if (out.filter(l => l !== '').length === 1 && line !== '' && !line.match(/^[💰💳•👉🏷️]/u) && next !== '' && !next.startsWith('•')) {
+      out.push(line);
+      if (next !== '') out.push('');
+      continue;
+    }
+
+    out.push(line);
+
+    // Garante linha em branco DEPOIS do último preço (antes de specs ou link)
+    if (line.match(/^💳|^💰/) && next.startsWith('•')) {
+      out.push('');
+    }
+    // Garante linha em branco DEPOIS da última spec (antes do link)
+    if (line.startsWith('•') && !next.startsWith('•') && next !== '') {
+      out.push('');
+    }
+  }
+
+  return out.join('\n').trim();
+}
+
 /** Extrai o JSON {product, versions} de um texto que a IA retornou (com ou sem cerca ```). */
 function extractResult(rawText: string): PromoResult {
   // Remove qualquer texto ANTES do primeiro { e DEPOIS do último }
@@ -146,7 +188,7 @@ function extractResult(rawText: string): PromoResult {
       ? parsed.versions.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, 3)
       : [];
     if (versions.length > 0) {
-      return { product: parsed.product ?? '', versions };
+      return { product: parsed.product ?? '', versions: versions.map(normalizeSpacing) };
     }
   } catch {
     // JSON malformado (alguns modelos gratuitos escapam aspas incorretamente).
