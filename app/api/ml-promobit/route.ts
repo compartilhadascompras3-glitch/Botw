@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       thumbnail:          o.offer_photo?.startsWith('http')
         ? o.offer_photo
         : `https://i.promobit.com.br${o.offer_photo?.startsWith('/') ? '' : '/'}${o.offer_photo ?? ''}`,
-      permalink:          `https://www.promobit.com.br/oferta/${o.offer_slug}/ir-a-loja/`,
+      permalink:          `https://www.promobit.com.br/Redirect/to/${o.offer_id}/`,
       condition:          'new',
       sold_quantity:      0,
       available_quantity: 0,

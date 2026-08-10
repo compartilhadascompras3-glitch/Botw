@@ -121,7 +121,8 @@ function photoUrl(path: string): string {
 }
 
 function offerPermalink(offer: PromobitOffer): string {
-  return `https://www.promobit.com.br/oferta/${offer.offer_slug}/ir-a-loja/`;
+  // Usa o link de redirect direto para a loja (sem passar pela página do Promobit)
+  return `https://www.promobit.com.br/Redirect/to/${offer.offer_id}/`;
 }
 
 export function toAmazon(o: PromobitOffer): AmazonProduct {
