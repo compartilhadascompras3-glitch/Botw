@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings, X, CheckCircle, ExternalLink } from 'lucide-react';
+import { Settings, X, CheckCircle, ExternalLink, ShoppingBag } from 'lucide-react';
 
 interface AppSettings {
   mattWord: string;
@@ -24,10 +24,22 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
   const [local, setLocal] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [mlNickname, setMlNickname] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { setLocal(settings); }, [settings]);
+
+  // Verificar se ML está conectado
+  useEffect(() => {
+    if (!open) return;
+    fetch('/api/ml-auth/status')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { connected: boolean; nickname?: string } | null) => {
+        setMlNickname(d?.connected ? (d.nickname ?? 'Conectado') : null);
+      })
+      .catch(() => setMlNickname(null));
+  }, [open]);
 
   const handleSave = () => {
     onSave(local);
@@ -100,6 +112,37 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
                   style={{ ...inputStyle, background: 'transparent', outline: 'none', padding: '10px 12px', borderRadius: 12, fontSize: 14, width: '100%', boxSizing: 'border-box' }} />
               </div>
             </div>
+          </div>
+
+          {/* ── Conta Mercado Livre ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: '#A0A0A0', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Conta Mercado Livre
+            </label>
+            {mlNickname ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 12, padding: '10px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShoppingBag size={15} style={{ color: '#00FF88' }} />
+                  <span style={{ fontSize: 13, color: '#00FF88', fontWeight: 600 }}>{mlNickname}</span>
+                  <span style={{ fontSize: 11, color: '#555' }}>conectado</span>
+                </div>
+                <a href="/api/ml-auth" style={{ fontSize: 11, color: '#555', textDecoration: 'underline', cursor: 'pointer' }}>
+                  Reconectar
+                </a>
+              </div>
+            ) : (
+              <a
+                href="/api/ml-auth"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 0', borderRadius: 12, fontWeight: 600, fontSize: 13, cursor: 'pointer', textDecoration: 'none', background: 'rgba(255,230,0,0.08)', border: '1px solid rgba(255,230,0,0.25)', color: '#FFE600', transition: 'all 0.2s' }}
+              >
+                <ShoppingBag size={15} />
+                Conectar conta Mercado Livre
+                <ExternalLink size={12} style={{ opacity: 0.6 }} />
+              </a>
+            )}
+            <p style={{ fontSize: 11, color: '#555', margin: 0 }}>
+              Necessário para buscar promoções em tempo real e usar ordenação por mais recentes.
+            </p>
           </div>
 
           {/* ── Afiliado ML ── */}
