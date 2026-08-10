@@ -11,12 +11,13 @@ import {
   Play, Square, Send, Clock, Smartphone,
   ChevronUp, ChevronDown, CheckCircle, AlertCircle,
   Users, RefreshCw, Loader2, X, Paperclip, Plus, ShieldCheck, CalendarClock, Radio,
+  Server,
 } from 'lucide-react';
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 function formatCountdown(s: number) { return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`; }
 
-// ── Scheduler state (vem do servidor) ────────────────────────────────────────
+// ── Scheduler state ───────────────────────────────────────────────────────────
 
 interface SchedulerState {
   running: boolean;
@@ -45,6 +46,22 @@ const DEFAULT_SCHEDULER: SchedulerState = {
   currentIndex: 0,
   nextFireAt: null,
 };
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+async function waPost(path: string, body?: unknown) {
+  const res = await fetch(`/api/wa/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json();
+}
+
+async function waGet(path: string) {
+  const res = await fetch(`/api/wa/${path}`);
+  return res.json();
+}
 
 // ── MultiGroupPicker ──────────────────────────────────────────────────────────
 
@@ -226,163 +243,112 @@ function MultiGroupPicker({
 
 export function SchedulerPanel() {
   const { messages, currentIndex: storeIndex } = useBotStore();
-  const { state: waState, fetchGroups, sendMessage, postStatus } = useWhatsApp();
+  const { state: waState, fetchGroups } = useWhatsApp();
   const { addHistoryDb } = useHistoryDb();
   const { refreshMessages } = useMessagesDb();
 
-  // Estado do scheduler vem do servidor
   const [sched, setSched] = useState<SchedulerState>(DEFAULT_SCHEDULER);
   const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [groups, setGroups] = useState<WaGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [fallbackPhone, setFallbackPhone] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  // Countdown derivado de nextFireAt do servidor
+  const [serverOffline, setServerOffline] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const totalSecondsRef = useRef(0);
 
   const isWaReady = waState.status === 'ready';
 
-  // ── Carrega estado inicial do scheduler ──────────────────────────────────
-  // Tenta wa-server; se falhar (Render dormindo), usa o banco como fallback
-  const autoStartedRef = useRef(false);
-  useEffect(() => {
-    // Scheduler roda no cliente — carrega config do banco
-    fetch('/api/bot-state')
-      .then((r) => r.json())
-      .then((d: {
-        targets?: Target[];
-        intervalMinutes?: number;
-        jitterPercent?: number;
-        scheduleEnabled?: boolean;
-        scheduleStart?: string;
-        scheduleEnd?: string;
-        statusEnabled?: boolean;
-        groupsEnabled?: boolean;
-        currentIndex?: number;
-        running?: boolean;
-      }) => {
-        setSched((s) => ({
-          ...s,
-          targets:         d.targets         ?? s.targets,
-          intervalMinutes: d.intervalMinutes  ?? s.intervalMinutes,
-          jitterPercent:   d.jitterPercent    ?? s.jitterPercent,
-          scheduleEnabled: d.scheduleEnabled  ?? s.scheduleEnabled,
-          scheduleStart:   d.scheduleStart    ?? s.scheduleStart,
-          scheduleEnd:     d.scheduleEnd      ?? s.scheduleEnd,
-          statusEnabled:   d.statusEnabled    ?? s.statusEnabled,
-          groupsEnabled:   d.groupsEnabled    ?? s.groupsEnabled,
-          // Preserva running=true do banco para reativar após F5
-          running:         d.running          ?? s.running,
-        }));
-        // Se estava rodando antes do F5, reagenda o timer
-        if (d.running && !autoStartedRef.current) {
-          autoStartedRef.current = true;
-          const interval = d.intervalMinutes ?? 30;
-          const jitter   = d.jitterPercent   ?? 20;
-          totalSecondsRef.current = interval * 60;
-          scheduleNext(interval, jitter);
-        }
-      })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // ── Polling do estado do scheduler no wa-server ───────────────────────────
+  const pollScheduler = useCallback(async () => {
+    try {
+      const data = await waGet('scheduler/state') as Partial<SchedulerState> & { error?: string };
+      if (data.error) { setServerOffline(true); return; }
+      setServerOffline(false);
+      setSched((s) => ({
+        ...s,
+        running:         data.running         ?? s.running,
+        intervalMinutes: data.intervalMinutes  ?? s.intervalMinutes,
+        jitterPercent:   data.jitterPercent    ?? s.jitterPercent,
+        scheduleEnabled: data.scheduleEnabled  ?? s.scheduleEnabled,
+        scheduleStart:   data.scheduleStart    ?? s.scheduleStart,
+        scheduleEnd:     data.scheduleEnd      ?? s.scheduleEnd,
+        statusEnabled:   data.statusEnabled    ?? s.statusEnabled,
+        groupsEnabled:   data.groupsEnabled    ?? s.groupsEnabled,
+        targets:         data.targets          ?? s.targets,
+        currentIndex:    data.currentIndex     ?? s.currentIndex,
+        nextFireAt:      data.nextFireAt       ?? s.nextFireAt,
+      }));
+    } catch {
+      setServerOffline(true);
+    }
   }, []);
 
-  // ── Timer cliente: dispara mensagens sem depender de servidor externo ──────
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const fireNow = useCallback(async () => {
-    if (!isWaReady) return;
-    const currentMessages = useBotStore.getState().messages;
-    const currentIdx = useBotStore.getState().currentIndex;
-    const msg = currentMessages[currentIdx] ?? currentMessages[0];
-    if (!msg) return;
-
-    const targets = sched.targets;
-    const results: string[] = [];
-
-    if (sched.groupsEnabled && targets.length > 0) {
-      for (const t of targets) {
-        const media = msg.mediaDataUrl
-          ? { dataUrl: msg.mediaDataUrl, type: msg.mediaType ?? 'image/jpeg', name: msg.mediaName ?? 'promo.jpg' }
-          : undefined;
-        const r = await sendMessage(t.id, msg.text, media);
-        results.push(r.ok ? `✓ ${t.name}` : `✗ ${t.name}: ${r.error}`);
-      }
-    }
-
-    if (sched.statusEnabled) {
-      const media = msg.mediaDataUrl
-        ? { dataUrl: msg.mediaDataUrl, type: msg.mediaType ?? 'image/jpeg', name: msg.mediaName ?? 'promo.jpg' }
-        : undefined;
-      const r = await postStatus(msg.text, media);
-      results.push(r.ok ? '✓ Status' : `✗ Status: ${r.error}`);
-    }
-
-    const allOk = results.every((r) => r.startsWith('✓'));
-    addHistoryDb({
-      messageId: msg.id,
-      messageText: msg.text,
-      hasMedia: !!msg.mediaDataUrl,
-      targets: targets,
-      sentAt: Date.now(),
-    });
-
-    setSendResult({ ok: allOk, msg: results.join(' · ') || 'Enviado.' });
-
-    // Se sendOnce: deleta do banco e do store; caso contrário só avança índice
-    if (msg.sendOnce) {
-      await fetch(`/api/messages?id=${encodeURIComponent(msg.id)}`, { method: 'DELETE' }).catch(() => {});
-      useBotStore.getState().removeMessage(msg.id);
-    } else {
-      useBotStore.getState().advanceIndex();
-    }
-
-    setTimeout(() => { refreshMessages(); setSendResult(null); }, 3000);
-  }, [isWaReady, sched.groupsEnabled, sched.statusEnabled, sched.targets, addHistoryDb, refreshMessages, sendMessage, postStatus]);
-
-  // Agenda próximo disparo
-  const scheduleNext = useCallback((intervalMin: number, jitter: number) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    const base = intervalMin * 60 * 1000;
-    const jitterMs = base * (jitter / 100);
-    const delay = base + (Math.random() * 2 - 1) * jitterMs;
-    const nextAt = Date.now() + delay;
-    setSched((s) => ({ ...s, nextFireAt: nextAt }));
-    timerRef.current = setTimeout(async () => {
-      await fireNow();
-      // Reagenda se ainda running
-      setSched((s) => {
-        if (s.running) scheduleNext(s.intervalMinutes, s.jitterPercent);
-        return s;
-      });
-    }, delay);
-  }, [fireNow]);
-
-  // Limpa timer ao desmontar
+  // Carrega estado inicial e depois faz polling a cada 5s
   useEffect(() => {
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, []);
+    pollScheduler();
+    const id = setInterval(pollScheduler, 5000);
+    return () => clearInterval(id);
+  }, [pollScheduler]);
 
-  // ── Countdown local (atualiza a cada segundo com base em nextFireAt do servidor) ──
+  // ── Countdown baseado em nextFireAt ───────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => {
       if (!sched.running || !sched.nextFireAt) { setSecondsLeft(0); return; }
       const remaining = Math.max(0, Math.round((sched.nextFireAt - Date.now()) / 1000));
       setSecondsLeft(remaining);
-      if (totalSecondsRef.current === 0 && sched.intervalMinutes) {
-        totalSecondsRef.current = sched.intervalMinutes * 60;
-      }
+      if (totalSecondsRef.current === 0) totalSecondsRef.current = sched.intervalMinutes * 60;
     }, 1000);
     return () => clearInterval(id);
   }, [sched.running, sched.nextFireAt, sched.intervalMinutes]);
 
-  // Sincroniza totalSecondsRef ao trocar intervalo
   useEffect(() => {
     totalSecondsRef.current = sched.intervalMinutes * 60;
   }, [sched.intervalMinutes]);
 
+  // ── Envia config atualizada para o wa-server (debounce 800ms) ────────────
+  const configTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pushConfig = useCallback((patch: Partial<SchedulerState>) => {
+    setSched((s) => {
+      const next = { ...s, ...patch };
+      if (configTimer.current) clearTimeout(configTimer.current);
+      configTimer.current = setTimeout(() => {
+        waPost('scheduler/config', {
+          intervalMinutes: next.intervalMinutes,
+          jitterPercent:   next.jitterPercent,
+          scheduleEnabled: next.scheduleEnabled,
+          scheduleStart:   next.scheduleStart,
+          scheduleEnd:     next.scheduleEnd,
+          statusEnabled:   next.statusEnabled,
+          groupsEnabled:   next.groupsEnabled,
+          targets:         next.targets,
+          currentIndex:    next.currentIndex,
+        }).catch(() => {});
+      }, 800);
+      return next;
+    });
+  }, []);
+
+  const handleAddTarget = useCallback((t: Target) => {
+    setSched((s) => {
+      if (s.targets.some((x) => x.id === t.id)) return s;
+      const targets = [...s.targets, t];
+      pushConfig({ targets });
+      return { ...s, targets };
+    });
+  }, [pushConfig]);
+
+  const handleRemoveTarget = useCallback((id: string) => {
+    setSched((s) => {
+      const targets = s.targets.filter((t) => t.id !== id);
+      pushConfig({ targets });
+      return { ...s, targets };
+    });
+  }, [pushConfig]);
+
+  // ── Grupos ────────────────────────────────────────────────────────────────
   const loadGroups = useCallback(async () => {
     setGroupsLoading(true);
     const list = await fetchGroups();
@@ -395,16 +361,16 @@ export function SchedulerPanel() {
     else setGroups([]);
   }, [isWaReady, loadGroups]);
 
-  // ── Salva sched no banco sempre que targets ou config mudam ─────────────
-  const schedSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (schedSaveTimer.current) clearTimeout(schedSaveTimer.current);
-    schedSaveTimer.current = setTimeout(() => {
-      fetch('/api/bot-state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targets:         sched.targets,
+  // ── Toggle ligar/desligar (chama wa-server) ───────────────────────────────
+  const handleToggle = useCallback(async () => {
+    setToggling(true);
+    try {
+      if (sched.running) {
+        await waPost('scheduler/stop');
+        setSched((s) => ({ ...s, running: false, nextFireAt: null }));
+        setSecondsLeft(0);
+      } else {
+        const config = {
           intervalMinutes: sched.intervalMinutes,
           jitterPercent:   sched.jitterPercent,
           scheduleEnabled: sched.scheduleEnabled,
@@ -412,59 +378,28 @@ export function SchedulerPanel() {
           scheduleEnd:     sched.scheduleEnd,
           statusEnabled:   sched.statusEnabled,
           groupsEnabled:   sched.groupsEnabled,
-          currentIndex:    sched.currentIndex ?? 0,
-          running:         sched.running,
-        }),
-      }).catch(() => {});
-    }, 800);
-    return () => { if (schedSaveTimer.current) clearTimeout(schedSaveTimer.current); };
-  }, [
-    sched.targets, sched.intervalMinutes, sched.jitterPercent,
-    sched.scheduleEnabled, sched.scheduleStart, sched.scheduleEnd,
-    sched.statusEnabled, sched.groupsEnabled, sched.currentIndex, sched.running,
-  ]);
-
-  // ── Helpers de config ────────────────────────────────────────────────────
-  const updateConfig = useCallback((patch: Partial<SchedulerState>) => {
-    setSched((s) => ({ ...s, ...patch }));
-  }, []);
-
-  const handleAddTarget = useCallback((t: Target) => {
-    const newTargets = sched.targets.some((x) => x.id === t.id)
-      ? sched.targets
-      : [...sched.targets, t];
-    updateConfig({ targets: newTargets });
-  }, [sched.targets, updateConfig]);
-
-  const handleRemoveTarget = useCallback((id: string) => {
-    updateConfig({ targets: sched.targets.filter((t) => t.id !== id) });
-  }, [sched.targets, updateConfig]);
-
-  // ── Toggle ligar/desligar ────────────────────────────────────────────────
-  const handleToggle = useCallback(() => {
-    if (sched.running) {
-      // Para o bot
-      if (timerRef.current) clearTimeout(timerRef.current);
-      setSched((s) => ({ ...s, running: false, nextFireAt: null }));
-      setSecondsLeft(0);
-      totalSecondsRef.current = 0;
-    } else {
-      // Inicia o bot
-      setSched((s) => ({ ...s, running: true }));
-      totalSecondsRef.current = sched.intervalMinutes * 60;
-      scheduleNext(sched.intervalMinutes, sched.jitterPercent);
+          targets:         sched.targets,
+        };
+        const data = await waPost('scheduler/start', config) as Partial<SchedulerState>;
+        setSched((s) => ({ ...s, ...data, running: true }));
+        totalSecondsRef.current = sched.intervalMinutes * 60;
+      }
+      setTimeout(pollScheduler, 1000);
+    } finally {
+      setToggling(false);
     }
-  }, [sched.running, sched.intervalMinutes, sched.jitterPercent, scheduleNext]);
+  }, [sched, pollScheduler]);
 
-  // ── Envio manual imediato ────────────────────────────────────────────────
+  // ── Envio manual imediato ─────────────────────────────────────────────────
   const handleSendNow = async () => {
     if (sending) return;
     setSending(true);
     setSendResult(null);
     try {
-      if (isWaReady) {
-        await fireNow();
-        setTimeout(() => { refreshMessages(); setSendResult(null); }, 1200);
+      if (isWaReady && !serverOffline) {
+        await waPost('scheduler/fire');
+        setSendResult({ ok: true, msg: 'Disparado! Verifique o histórico em instantes.' });
+        setTimeout(() => { refreshMessages(); setSendResult(null); pollScheduler(); }, 2000);
       } else {
         // fallback: abre WhatsApp Web
         const msg = messages[storeIndex] ?? messages[0];
@@ -487,7 +422,7 @@ export function SchedulerPanel() {
 
   const currentMsg = messages[storeIndex] ?? messages[0] ?? null;
 
-  const canStart = messages.length > 0 && (
+  const canStart = messages.length > 0 && !serverOffline && (
     isWaReady
       ? (sched.targets.length > 0 && sched.groupsEnabled) || sched.statusEnabled
       : true
@@ -499,6 +434,24 @@ export function SchedulerPanel() {
   return (
     <div className="space-y-4">
       <WhatsAppConnector />
+
+      {/* Banner: wa-server offline */}
+      {serverOffline && (
+        <div className="rounded-xl border px-3 py-2.5 flex items-center gap-2 text-sm"
+          style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}>
+          <AlertCircle size={15} className="shrink-0" />
+          <span>wa-server não está respondendo. Verifique se o <code className="text-xs">node wa-server.js</code> e o ngrok estão rodando no seu PC.</span>
+        </div>
+      )}
+
+      {/* Banner: bot rodando no servidor */}
+      {sched.running && !serverOffline && (
+        <div className="rounded-xl border px-3 py-2.5 flex items-center gap-2 text-sm"
+          style={{ background: 'rgba(37,211,102,0.08)', borderColor: 'rgba(37,211,102,0.3)', color: 'var(--wa-dark-green)' }}>
+          <Server size={14} className="shrink-0" />
+          <span>Bot rodando no servidor do seu PC — funciona mesmo com o site fechado.</span>
+        </div>
+      )}
 
       {/* Prévia da mensagem atual */}
       {currentMsg && (
@@ -567,17 +520,12 @@ export function SchedulerPanel() {
         {/* Toggles — só quando WA conectado */}
         {isWaReady && (
           <div className="space-y-2">
-            {/* Toggle: grupos */}
-            <div
-              className="rounded-xl border p-3 flex items-center justify-between gap-3"
-              style={{ borderColor: sched.groupsEnabled ? 'rgba(37,211,102,0.4)' : 'var(--border)', background: sched.groupsEnabled ? 'rgba(37,211,102,0.06)' : 'transparent' }}
-            >
+            <div className="rounded-xl border p-3 flex items-center justify-between gap-3"
+              style={{ borderColor: sched.groupsEnabled ? 'rgba(37,211,102,0.4)' : 'var(--border)', background: sched.groupsEnabled ? 'rgba(37,211,102,0.06)' : 'transparent' }}>
               <div className="flex items-center gap-2 min-w-0">
                 <Users size={15} style={{ color: sched.groupsEnabled ? 'var(--wa-green)' : 'var(--muted-foreground)', flexShrink: 0 }} />
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold leading-tight" style={{ color: sched.groupsEnabled ? 'var(--wa-dark-green)' : 'var(--foreground)' }}>
-                    Enviar para os grupos
-                  </p>
+                  <p className="text-xs font-semibold leading-tight" style={{ color: sched.groupsEnabled ? 'var(--wa-dark-green)' : 'var(--foreground)' }}>Enviar para os grupos</p>
                   <p className="text-xs text-muted-foreground leading-tight mt-0.5">
                     {sched.groupsEnabled
                       ? sched.targets.length > 0 ? `${sched.targets.length} grupo${sched.targets.length > 1 ? 's' : ''} selecionado${sched.targets.length > 1 ? 's' : ''}` : 'Nenhum grupo selecionado acima'
@@ -585,7 +533,7 @@ export function SchedulerPanel() {
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={() => updateConfig({ groupsEnabled: !sched.groupsEnabled })}
+              <button type="button" onClick={() => pushConfig({ groupsEnabled: !sched.groupsEnabled })}
                 className="w-10 h-5 rounded-full relative transition-colors shrink-0"
                 style={{ background: sched.groupsEnabled ? 'var(--wa-green)' : 'var(--border)' }}>
                 <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
@@ -593,23 +541,18 @@ export function SchedulerPanel() {
               </button>
             </div>
 
-            {/* Toggle: Status */}
-            <div
-              className="rounded-xl border p-3 flex items-center justify-between gap-3"
-              style={{ borderColor: sched.statusEnabled ? 'rgba(37,211,102,0.4)' : 'var(--border)', background: sched.statusEnabled ? 'rgba(37,211,102,0.06)' : 'transparent' }}
-            >
+            <div className="rounded-xl border p-3 flex items-center justify-between gap-3"
+              style={{ borderColor: sched.statusEnabled ? 'rgba(37,211,102,0.4)' : 'var(--border)', background: sched.statusEnabled ? 'rgba(37,211,102,0.06)' : 'transparent' }}>
               <div className="flex items-center gap-2 min-w-0">
                 <Radio size={15} style={{ color: sched.statusEnabled ? 'var(--wa-green)' : 'var(--muted-foreground)', flexShrink: 0 }} />
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold leading-tight" style={{ color: sched.statusEnabled ? 'var(--wa-dark-green)' : 'var(--foreground)' }}>
-                    Postar no Status do WhatsApp
-                  </p>
+                  <p className="text-xs font-semibold leading-tight" style={{ color: sched.statusEnabled ? 'var(--wa-dark-green)' : 'var(--foreground)' }}>Postar no Status do WhatsApp</p>
                   <p className="text-xs text-muted-foreground leading-tight mt-0.5">
                     {sched.statusEnabled ? 'Cada envio também posta no seu Status/Story' : 'Ativar para postar no Status junto com os grupos'}
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={() => updateConfig({ statusEnabled: !sched.statusEnabled })}
+              <button type="button" onClick={() => pushConfig({ statusEnabled: !sched.statusEnabled })}
                 className="w-10 h-5 rounded-full relative transition-colors shrink-0"
                 style={{ background: sched.statusEnabled ? 'var(--wa-green)' : 'var(--border)' }}>
                 <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
@@ -625,20 +568,19 @@ export function SchedulerPanel() {
             <Clock size={13} /> Intervalo entre envios
           </label>
           <div className="flex items-center gap-3">
-            <input
-              type="range" min={1} max={120} step={1}
+            <input type="range" min={1} max={120} step={1}
               value={sched.intervalMinutes}
-              onChange={(e) => updateConfig({ intervalMinutes: Number(e.target.value) })}
+              onChange={(e) => pushConfig({ intervalMinutes: Number(e.target.value) })}
               className="flex-1 accent-green-500"
               disabled={sched.running}
             />
             <div className="flex items-center gap-1 rounded-xl border px-2 py-1" style={{ borderColor: 'var(--border)', background: 'var(--secondary)', color: 'var(--foreground)', minWidth: 80 }}>
-              <button onClick={() => updateConfig({ intervalMinutes: Math.max(1, sched.intervalMinutes - 1) })} disabled={sched.running || sched.intervalMinutes <= 1}
+              <button onClick={() => pushConfig({ intervalMinutes: Math.max(1, sched.intervalMinutes - 1) })} disabled={sched.running || sched.intervalMinutes <= 1}
                 className="w-6 h-6 flex items-center justify-center rounded-lg disabled:opacity-30 hover:opacity-70">
                 <ChevronDown size={14} />
               </button>
               <span className="text-sm font-semibold flex-1 text-center" translate="no">{sched.intervalMinutes}m</span>
-              <button onClick={() => updateConfig({ intervalMinutes: Math.min(120, sched.intervalMinutes + 1) })} disabled={sched.running || sched.intervalMinutes >= 120}
+              <button onClick={() => pushConfig({ intervalMinutes: Math.min(120, sched.intervalMinutes + 1) })} disabled={sched.running || sched.intervalMinutes >= 120}
                 className="w-6 h-6 flex items-center justify-center rounded-lg disabled:opacity-30 hover:opacity-70">
                 <ChevronUp size={14} />
               </button>
@@ -647,29 +589,23 @@ export function SchedulerPanel() {
         </div>
 
         {/* Configurações avançadas */}
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
+        <button onClick={() => setShowAdvanced(!showAdvanced)}
           className="w-full flex items-center justify-between text-xs font-semibold py-1 hover:opacity-70 transition-opacity"
-          style={{ color: 'var(--muted-foreground)' }}
-        >
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck size={13} /> Configurações avançadas
-          </span>
+          style={{ color: 'var(--muted-foreground)' }}>
+          <span className="flex items-center gap-1.5"><ShieldCheck size={13} /> Configurações avançadas</span>
           {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
 
         {showAdvanced && (
           <div className="space-y-4 pt-1">
-            {/* Jitter anti-ban */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--wa-dark-green)' }}>
                 <ShieldCheck size={13} /> Variação aleatória anti-ban
               </label>
               <div className="flex items-center gap-3">
-                <input
-                  type="range" min={0} max={50} step={5}
+                <input type="range" min={0} max={50} step={5}
                   value={sched.jitterPercent}
-                  onChange={(e) => updateConfig({ jitterPercent: Number(e.target.value) })}
+                  onChange={(e) => pushConfig({ jitterPercent: Number(e.target.value) })}
                   className="flex-1 accent-green-500"
                   disabled={sched.running}
                 />
@@ -682,13 +618,12 @@ export function SchedulerPanel() {
               </p>
             </div>
 
-            {/* Horário de funcionamento */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--wa-dark-green)' }}>
                   <CalendarClock size={13} /> Horário de funcionamento
                 </label>
-                <button type="button" onClick={() => updateConfig({ scheduleEnabled: !sched.scheduleEnabled })}
+                <button type="button" onClick={() => pushConfig({ scheduleEnabled: !sched.scheduleEnabled })}
                   className="w-10 h-5 rounded-full relative transition-colors"
                   style={{ background: sched.scheduleEnabled ? 'var(--wa-green)' : 'var(--border)' }}>
                   <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
@@ -698,19 +633,19 @@ export function SchedulerPanel() {
               {sched.scheduleEnabled && (
                 <div className="flex items-center gap-2">
                   <input type="time" value={sched.scheduleStart}
-                    onChange={(e) => updateConfig({ scheduleStart: e.target.value })}
+                    onChange={(e) => pushConfig({ scheduleStart: e.target.value })}
                     className="flex-1 text-sm rounded-xl border px-3 py-2 focus:outline-none"
                     style={{ borderColor: 'var(--border)', background: 'var(--secondary)', color: 'var(--foreground)' }} />
                   <span className="text-xs text-muted-foreground">até</span>
                   <input type="time" value={sched.scheduleEnd}
-                    onChange={(e) => updateConfig({ scheduleEnd: e.target.value })}
+                    onChange={(e) => pushConfig({ scheduleEnd: e.target.value })}
                     className="flex-1 text-sm rounded-xl border px-3 py-2 focus:outline-none"
                     style={{ borderColor: 'var(--border)', background: 'var(--secondary)', color: 'var(--foreground)' }} />
                 </div>
               )}
               {sched.scheduleEnabled && (
                 <p className="text-xs text-muted-foreground">
-                  O bot só enviará entre {sched.scheduleStart} e {sched.scheduleEnd}. Fora desse horário, aguarda 1 min e verifica novamente.
+                  O bot só enviará entre {sched.scheduleStart} e {sched.scheduleEnd}.
                 </p>
               )}
             </div>
@@ -729,10 +664,8 @@ export function SchedulerPanel() {
               </span>
             </div>
             <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--secondary)' }}>
-              <div
-                className="h-full rounded-full transition-all duration-1000"
-                style={{ width: `${progress * 100}%`, background: 'var(--wa-green)' }}
-              />
+              <div className="h-full rounded-full transition-all duration-1000"
+                style={{ width: `${progress * 100}%`, background: 'var(--wa-green)' }} />
             </div>
           </div>
         )}
@@ -750,13 +683,13 @@ export function SchedulerPanel() {
         <div className="flex gap-2">
           <button
             onClick={handleToggle}
-            disabled={!canStart && !sched.running}
+            disabled={(!canStart && !sched.running) || toggling || serverOffline}
             className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm disabled:opacity-40 transition-opacity"
             style={{ background: sched.running ? '#EF4444' : 'var(--wa-green)', color: 'white' }}
           >
-            {sched.running
-              ? <><Square size={16} />Parar bot</>
-              : <><Play size={16} />Iniciar bot</>}
+            {toggling
+              ? <Loader2 size={16} className="animate-spin" />
+              : sched.running ? <><Square size={16} />Parar bot</> : <><Play size={16} />Iniciar bot</>}
           </button>
 
           <button
@@ -770,7 +703,7 @@ export function SchedulerPanel() {
           </button>
         </div>
 
-        {!canStart && !sched.running && messages.length > 0 && (
+        {!canStart && !sched.running && messages.length > 0 && !serverOffline && (
           <p className="text-xs text-center text-muted-foreground">
             {isWaReady
               ? 'Ative "Enviar para grupos" com ao menos um grupo, ou ative "Postar no Status".'
@@ -791,9 +724,9 @@ export function SchedulerPanel() {
         <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
           <li>Conecte seu WhatsApp escaneando o QR Code acima.</li>
           <li>Adicione mensagens na aba <strong>Mensagens</strong>.</li>
-          <li>Busque e adicione <strong>múltiplos grupos</strong> — cada disparo vai para todos ao mesmo tempo.</li>
-          <li>Clique em <strong>Iniciar bot</strong> para começar.</li>
-          <li>O bot roda no servidor — feche o navegador sem preocupação.</li>
+          <li>Selecione os grupos de destino e clique em <strong>Iniciar bot</strong>.</li>
+          <li>O bot roda no <strong>wa-server.js no seu PC</strong> — feche o site sem preocupação.</li>
+          <li>O site fechado não para o bot. Só fechar o PowerShell para o bot.</li>
         </ol>
       </div>
     </div>
