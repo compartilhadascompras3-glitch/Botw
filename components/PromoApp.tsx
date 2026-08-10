@@ -289,24 +289,25 @@ export default function PromoApp() {
           if ((data.products || []).length === 0) setMlError('Nenhuma promoção encontrada. Tente outra busca ou reduza o desconto mínimo.');
         }
       } else {
-        // Sem query: busca 8 categorias variadas em paralelo para mostrar de tudo
+        // Sem query: busca todas as categorias, 2 páginas cada, em paralelo
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
-        const queriesToFetch = shuffled.slice(0, 8);
-        const results = await Promise.allSettled(
-          queriesToFetch.map(qItem =>
-            fetch(`/api/ml-deals?${new URLSearchParams({
-              q: qItem, category, minDiscount: discount.toString(),
-              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
-              sort: sort ?? 'default',
-            })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>)
-          )
-        );
+        const fetchPage = (qItem: string, pg: number) =>
+          fetch(`/api/ml-deals?${new URLSearchParams({
+            q: qItem, category, minDiscount: discount.toString(),
+            mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: pg.toString(),
+            sort: sort ?? 'default',
+          })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
+
+        // Página 1 e 2 de cada categoria ao mesmo tempo
+        const allFetches = shuffled.flatMap(qItem => [fetchPage(qItem, 1), fetchPage(qItem, 2)]);
+        const settled = await Promise.allSettled(allFetches);
+
         const seen = new Set<string>();
         const merged: MLProduct[] = [];
-        // Intercala produtos de cada categoria para variar
-        const batches = results
+        const batches = settled
           .filter((r): r is PromiseFulfilledResult<{ products: MLProduct[] }> => r.status === 'fulfilled')
           .map(r => r.value.products ?? []);
+        // Intercala para variar categorias
         const maxLen = Math.max(...batches.map(b => b.length), 0);
         for (let i = 0; i < maxLen; i++) {
           for (const batch of batches) {
@@ -320,7 +321,8 @@ export default function PromoApp() {
           setMlError('Nenhuma promoção encontrada. Tente reduzir o desconto mínimo.');
         } else {
           setMlProducts(merged);
-          setMlHasMore(true);
+          setMlHasMore(true); // sempre tem mais — carrega página 3+ ao clicar
+          setMlPage(2); // já carregamos páginas 1 e 2
         }
       }
     } catch {
@@ -355,21 +357,23 @@ export default function PromoApp() {
           setMlHasMore(false);
         }
       } else {
-        // Sem query: busca mais 8 categorias aleatórias (diferentes das anteriores)
+        // Sem query: busca página seguinte de todas as categorias
+        // nextPage começa em 2 (já carregamos 1+2 no load inicial), então aqui vira 3, 4...
+        // Mas o mlPage foi setado para 2 no load inicial, então nextPage = 3 na 1ª rodada
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
-        const queriesToFetch = shuffled.slice(0, 8);
-        const results = await Promise.allSettled(
-          queriesToFetch.map(qItem =>
-            fetch(`/api/ml-deals?${new URLSearchParams({
-              q: qItem, category: activeCategory, minDiscount: minDiscount.toString(),
-              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
-              sort: sortKey,
-            })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>)
-          )
-        );
+        const fetchPg = (qItem: string, pg: number) =>
+          fetch(`/api/ml-deals?${new URLSearchParams({
+            q: qItem, category: activeCategory, minDiscount: minDiscount.toString(),
+            mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: pg.toString(),
+            sort: sortKey,
+          })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
+
+        const allFetches = shuffled.flatMap(qItem => [fetchPg(qItem, nextPage), fetchPg(qItem, nextPage + 1)]);
+        const settled = await Promise.allSettled(allFetches);
+
         setMlProducts((prev) => {
           const ids = new Set(prev.map((p) => p.id));
-          const batches = results
+          const batches = settled
             .filter((r): r is PromiseFulfilledResult<{ products: MLProduct[] }> => r.status === 'fulfilled')
             .map(r => r.value.products ?? []);
           const newProducts: MLProduct[] = [];
@@ -384,8 +388,8 @@ export default function PromoApp() {
           }
           return [...prev, ...newProducts];
         });
-        setMlPage(nextPage);
-        setMlHasMore(nextPage < 10); // até 10 rodadas de "carregar mais"
+        setMlPage(nextPage + 1);
+        setMlHasMore(true); // sem limite — o botão sempre aparece
       }
     } catch {
       setMlHasMore(false);
