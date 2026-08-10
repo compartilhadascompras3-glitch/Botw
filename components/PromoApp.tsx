@@ -296,7 +296,7 @@ export default function PromoApp() {
           queriesToFetch.map(qItem =>
             fetch(`/api/ml-deals?${new URLSearchParams({
               q: qItem, category, minDiscount: discount.toString(),
-              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '12', page: '1',
+              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
               sort: sort ?? 'default',
             })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>)
           )
@@ -362,7 +362,7 @@ export default function PromoApp() {
           queriesToFetch.map(qItem =>
             fetch(`/api/ml-deals?${new URLSearchParams({
               q: qItem, category: activeCategory, minDiscount: minDiscount.toString(),
-              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '12', page: '1',
+              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
               sort: sortKey,
             })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>)
           )
