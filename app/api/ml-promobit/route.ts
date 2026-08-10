@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
       category_id:        '',
       seller_name:        'Mercado Livre',
       source:             'ml_promobit',
+      coupon:             o.offer_coupon || null,
     }));
 
     const products = await resolvePermalinks(base, sliced.map(o => o.offer_id));

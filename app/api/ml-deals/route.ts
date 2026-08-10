@@ -20,6 +20,7 @@ export interface MLProduct {
   category_id: string;
   seller_name: string;
   source?: 'ml' | 'ml_promobit'; // ml_promobit = veio via Promobit
+  coupon?: string | null;
 }
 
 // ── Token helpers ─────────────────────────────────────────────────────────────

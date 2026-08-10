@@ -154,12 +154,12 @@ export function ProductCard({ product, accentColor = '#00D4FF', accentGrad, alre
         </div>
 
         {/* Cupom de desconto */}
-        {(product as AmazonProduct | ShopeeProduct).coupon && (
+        {((product as AmazonProduct | ShopeeProduct).coupon ?? (product as MLProduct).coupon) && (
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg w-fit"
             style={{ background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.3)' }}>
             <span className="text-xs">🏷️</span>
             <span className="text-xs font-bold tracking-wider" style={{ color: '#FFD700' }}>
-              {(product as AmazonProduct | ShopeeProduct).coupon}
+              {(product as AmazonProduct | ShopeeProduct).coupon ?? (product as MLProduct).coupon}
             </span>
           </div>
         )}
