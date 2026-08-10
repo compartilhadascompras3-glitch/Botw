@@ -52,18 +52,38 @@ async function fetchML(url: string): Promise<FetchedProduct | null> {
   if (!itemId) return null;
 
   try {
-    const apiRes = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!apiRes.ok) return null;
-    const item = await apiRes.json() as {
+    // Busca dados do item e preços em paralelo
+    const [itemRes, pricesRes] = await Promise.all([
+      fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      }),
+      fetch(`https://api.mercadolibre.com/items/${itemId}/prices`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      }).catch(() => null),
+    ]);
+
+    if (!itemRes.ok) return null;
+    const item = await itemRes.json() as {
       id: string; title: string; price: number; original_price?: number | null;
       thumbnail: string; permalink: string;
       seller?: { nickname?: string };
     };
 
-    const original = item.original_price ?? null;
+    // Tenta extrair preço original do endpoint /prices
+    let originalFromPrices: number | null = null;
+    if (pricesRes?.ok) {
+      const pricesData = await pricesRes.json() as {
+        prices?: { type: string; amount: number; regular_amount?: number | null }[]
+      };
+      const mainPrice = (pricesData.prices ?? []).find(p => p.type === 'standard');
+      if (mainPrice?.regular_amount && mainPrice.regular_amount > mainPrice.amount) {
+        originalFromPrices = mainPrice.regular_amount;
+      }
+    }
+
+    const original = item.original_price ?? originalFromPrices ?? null;
     const discount = original && original > item.price
       ? Math.round((1 - item.price / original) * 100)
       : 0;

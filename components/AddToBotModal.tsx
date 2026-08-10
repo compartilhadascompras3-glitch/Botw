@@ -54,6 +54,10 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
   const [aiModel, setAiModel] = useState<AiModel>('bty');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
+  // Preços editáveis (usados quando o fetch não trouxe preços)
+  const [priceEdit, setPriceEdit]     = useState('');
+  const [origEdit, setOrigEdit]       = useState('');
+
   // Texto editado (separado por versão para preservar edições ao navegar)
   const [editedTexts, setEditedTexts] = useState<string[]>([]);
 
@@ -68,6 +72,8 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
   const linkInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const needsPriceInput = product ? product.price === 0 : false;
+
   // Reset ao abrir com novo produto
   useEffect(() => {
     if (!product) return;
@@ -77,7 +83,12 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     setAiError(null);
     setAffiliateLink('');
     setSaved(false);
-    generateTexts(product, aiModel);
+    setPriceEdit('');
+    setOrigEdit('');
+    // Só gera automaticamente se tiver preço
+    if (product.price > 0) {
+      generateTexts(product, aiModel);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product]);
 
@@ -94,7 +105,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     }
   }, [editedTexts, selectedIdx]);
 
-  const generateTexts = async (p: AnyProduct, model: AiModel = aiModel) => {
+  const generateTexts = async (p: AnyProduct, model: AiModel = aiModel, overridePrice?: number, overrideOrig?: number) => {
     setAiLoading(true);
     setAiError(null);
     try {
@@ -111,8 +122,13 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
 
       if (!imageBase64) throw new Error('Não foi possível carregar a imagem do produto.');
 
-      // 2. Chama a IA com dados do produto (ajuda modelos com visão fraca a preencher preço)
+      // 2. Chama a IA com dados do produto
       const coupon = (p as { coupon?: string | null }).coupon ?? null;
+      const finalPrice = overridePrice ?? p.price;
+      const finalOrig  = overrideOrig  ?? p.original_price ?? undefined;
+      const finalDisc  = finalOrig && finalOrig > finalPrice
+        ? Math.round((1 - finalPrice / finalOrig) * 100)
+        : p.discount_percent;
 
       const res = await fetch('/api/generate-promo', {
         method: 'POST',
@@ -122,9 +138,9 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
           mimeType,
           link: '',
           title: p.title,
-          price: p.price,
-          originalPrice: p.original_price ?? undefined,
-          discountPercent: p.discount_percent,
+          price: finalPrice,
+          originalPrice: finalOrig,
+          discountPercent: finalDisc,
           coupon,
           preferredProvider: model,
         }),
@@ -259,6 +275,54 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
 
         {/* ── Body ── */}
         <div className="overflow-y-auto flex-1 px-5 py-4 flex flex-col gap-4" style={{ scrollbarWidth: 'none' }}>
+
+          {/* Preços manuais — aparece quando o fetch não trouxe preço */}
+          {needsPriceInput && versions.length === 0 && !aiLoading && (
+            <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: 'rgba(255,160,0,0.07)', border: '1px solid rgba(255,160,0,0.2)' }}>
+              <p className="text-xs font-semibold" style={{ color: '#FFA500' }}>
+                ⚠️ Não conseguimos ler o preço deste produto. Preencha abaixo para gerar os textos.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider mb-1 block" style={{ color: '#666' }}>Preço atual (R$) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Ex: 299.90"
+                    value={priceEdit}
+                    onChange={e => setPriceEdit(e.target.value)}
+                    className="w-full bg-transparent text-sm text-white outline-none px-3 py-2 rounded-xl"
+                    style={{ border: '1px solid rgba(255,255,255,0.12)', background: '#111' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider mb-1 block" style={{ color: '#666' }}>Preço original (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Ex: 499.90"
+                    value={origEdit}
+                    onChange={e => setOrigEdit(e.target.value)}
+                    className="w-full bg-transparent text-sm text-white outline-none px-3 py-2 rounded-xl"
+                    style={{ border: '1px solid rgba(255,255,255,0.12)', background: '#111' }}
+                  />
+                </div>
+              </div>
+              <button
+                disabled={!priceEdit || parseFloat(priceEdit) <= 0}
+                onClick={() => {
+                  if (!product) return;
+                  const p = parseFloat(priceEdit);
+                  const o = origEdit ? parseFloat(origEdit) : undefined;
+                  generateTexts(product, aiModel, p, o);
+                }}
+                className="w-full py-2 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                style={{ background: '#FFA500', color: '#000' }}
+              >
+                Gerar textos
+              </button>
+            </div>
+          )}
 
           {/* Link de afiliado */}
           <div>
