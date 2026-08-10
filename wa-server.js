@@ -270,7 +270,7 @@ function buildMediaMessage(mediaType, base64, filename, caption) {
 //   pnpm wa-server
 // Se não for definida, assume localhost:13000 (uso local / preview, onde
 // Next.js e wa-server rodam juntos no mesmo ambiente).
-const NEXT_API = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:13000').replace(/\/$/, '');
+const NEXT_API = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://app-0701c13d2e.happyseeds.space').replace(/\/$/, '');
 console.log(`[Scheduler] NEXT_API = ${NEXT_API}`);
 
 /** Busca mensagens do banco via Next.js API */
