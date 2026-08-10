@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Zap, TrendingDown, Filter, MessageSquare, ArrowUpDown, Check } from 'lucide-react';
+import { Search, RefreshCw, Zap, TrendingDown, Filter, MessageSquare, ArrowUpDown, Check, Link2, X, Loader2 } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { AddToBotModal } from '@/components/AddToBotModal';
 import { useMessagesDb } from '@/hooks/use-messages-db';
 import type { MLProduct } from '@/app/api/ml-deals/route';
-import type { AmazonProduct } from '@/lib/promobit';
-import type { ShopeeProduct } from '@/lib/promobit';
+import type { AmazonProduct, ShopeeProduct } from '@/lib/promobit';
+import type { FetchedProduct } from '@/app/api/fetch-product/route';
 
 type AnyProduct = MLProduct | AmazonProduct | ShopeeProduct;
 type Source = 'ml' | 'amazon' | 'shopee';
@@ -665,6 +665,47 @@ export default function PromoApp() {
     setBotAddedCount((c) => c + 1);
   }, [addMessage]);
 
+  // ── Fetch por link ─────────────────────────────────────────────────────────
+  const [linkPanelOpen, setLinkPanelOpen] = useState(false);
+  const [linkInput, setLinkInput]         = useState('');
+  const [linkLoading, setLinkLoading]     = useState(false);
+  const [linkError, setLinkError]         = useState<string | null>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFetchByLink = useCallback(async () => {
+    const url = linkInput.trim();
+    if (!url) return;
+    setLinkLoading(true);
+    setLinkError(null);
+    try {
+      const res = await fetch(`/api/fetch-product?url=${encodeURIComponent(url)}`);
+      const data = await res.json() as { product?: FetchedProduct; error?: string };
+      if (!res.ok || data.error || !data.product) {
+        setLinkError(data.error ?? 'Não foi possível extrair os dados do produto.');
+        return;
+      }
+      // Converte FetchedProduct para AnyProduct e abre o modal
+      const p = data.product;
+      const asProduct: AnyProduct = p.source === 'ml'
+        ? { id: p.id, title: p.title, price: p.price, original_price: p.original_price, discount_percent: p.discount_percent, thumbnail: p.thumbnail, permalink: p.permalink, condition: 'new', sold_quantity: 0, available_quantity: 0, category_id: '', seller_name: p.seller_name ?? 'Mercado Livre', source: 'ml' } as MLProduct
+        : p.source === 'amazon'
+          ? { id: p.id, asin: p.id.replace('amz_',''), title: p.title, price: p.price, original_price: p.original_price, discount_percent: p.discount_percent, thumbnail: p.thumbnail, permalink: p.permalink, source: 'amazon', coupon: p.coupon } as AmazonProduct
+          : { id: p.id, title: p.title, price: p.price, original_price: p.original_price, discount_percent: p.discount_percent, thumbnail: p.thumbnail, permalink: p.permalink, source: 'shopee', coupon: p.coupon } as ShopeeProduct;
+      setLinkInput('');
+      setLinkPanelOpen(false);
+      handleOpenModal(asProduct);
+    } catch {
+      setLinkError('Falha de conexão. Verifique o link e tente novamente.');
+    } finally {
+      setLinkLoading(false);
+    }
+  }, [linkInput, handleOpenModal]);
+
+  // Foca o input quando o painel abre
+  useEffect(() => {
+    if (linkPanelOpen) setTimeout(() => linkInputRef.current?.focus(), 80);
+  }, [linkPanelOpen]);
+
   // ── Derived values ───────────────────────────────────────────────────────────
   const categories = source === 'ml' ? ML_CATEGORIES : source === 'amazon' ? AMAZON_CATEGORIES : SHOPEE_CATEGORIES;
   const rawProducts: AnyProduct[] = source === 'ml' ? mlProducts : source === 'amazon' ? amzProducts : speProducts;
@@ -729,6 +770,18 @@ export default function PromoApp() {
 
             <div className="flex-1" />
 
+            {/* Botão colar link */}
+            <button
+              onClick={() => { setLinkPanelOpen(v => !v); setLinkError(null); }}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full cursor-pointer transition-all shrink-0"
+              style={linkPanelOpen
+                ? { background: 'rgba(0,212,255,0.15)', color: '#00D4FF', border: '1px solid rgba(0,212,255,0.4)' }
+                : { background: '#0d0d0d', color: '#888', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <Link2 size={12} />
+              <span className="hidden sm:inline">Colar link</span>
+            </button>
+
             {/* Bot counter */}
             {botAddedCount > 0 && (
               <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full shrink-0" style={{ background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.25)' }}>
@@ -782,6 +835,42 @@ export default function PromoApp() {
           </form>
         </div>
       </div>
+
+      {/* Painel colar link */}
+      {linkPanelOpen && (
+        <div className="w-full border-b" style={{ background: 'rgba(10,10,10,0.95)', borderColor: 'rgba(0,212,255,0.15)' }}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col gap-2">
+            <p className="text-xs" style={{ color: '#888' }}>
+              Cole o link de qualquer produto do ML, Amazon ou Shopee — o app busca os dados e gera o texto automaticamente.
+            </p>
+            <div className="flex gap-2">
+              <input
+                ref={linkInputRef}
+                type="url"
+                value={linkInput}
+                onChange={e => { setLinkInput(e.target.value); setLinkError(null); }}
+                onKeyDown={e => e.key === 'Enter' && handleFetchByLink()}
+                placeholder="https://produto.mercadolivre.com.br/..."
+                className="flex-1 text-sm px-3 py-2 rounded-xl outline-none"
+                style={{ background: '#111', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+              />
+              <button
+                onClick={handleFetchByLink}
+                disabled={linkLoading || !linkInput.trim()}
+                className="flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl cursor-pointer transition-all shrink-0 disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg, #00D4FF 0%, #00FF88 100%)', color: '#000' }}
+              >
+                {linkLoading ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} fill="black" />}
+                {linkLoading ? 'Buscando...' : 'Gerar'}
+              </button>
+              <button onClick={() => setLinkPanelOpen(false)} className="p-2 rounded-xl cursor-pointer" style={{ color: '#666' }}>
+                <X size={14} />
+              </button>
+            </div>
+            {linkError && <p className="text-xs" style={{ color: '#FF6B6B' }}>{linkError}</p>}
+          </div>
+        </div>
+      )}
 
       {/* Main */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-6">
