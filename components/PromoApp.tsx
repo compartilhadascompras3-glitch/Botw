@@ -240,7 +240,7 @@ export default function PromoApp() {
   };
 
   // ── ML fetching ──────────────────────────────────────────────────────────────
-  const fetchML = useCallback(async (q: string, category: string, discount: number) => {
+  const fetchML = useCallback(async (q: string, category: string, discount: number, sort?: string) => {
     setMlLoading(true);
     setMlProducts([]);
     setMlError(null);
@@ -250,10 +250,11 @@ export default function PromoApp() {
       const searchQuery = q.trim() || ML_DEFAULT_QUERIES[Math.floor(Math.random() * ML_DEFAULT_QUERIES.length)];
       const params = new URLSearchParams({
         q: searchQuery, category, minDiscount: discount.toString(),
-        mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '96', page: '1',
+        mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
+        sort: sort ?? 'default',
       });
       const res = await fetch(`/api/ml-deals?${params}`);
-      const data = await res.json() as { products: MLProduct[]; error?: string; hasMore?: boolean };
+      const data = await res.json() as { products: MLProduct[]; error?: string; hasMore?: boolean; warning?: string };
       if (!res.ok || data.error) {
         setMlError(data.error || 'Erro ao buscar promoções.');
       } else {
@@ -276,7 +277,8 @@ export default function PromoApp() {
       const searchQuery = query.trim() || ML_DEFAULT_QUERIES[0];
       const params = new URLSearchParams({
         q: searchQuery, category: activeCategory, minDiscount: minDiscount.toString(),
-        mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '96', page: nextPage.toString(),
+        mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: nextPage.toString(),
+        sort: sortKey,
       });
       const res = await fetch(`/api/ml-deals?${params}`);
       const data = await res.json() as { products: MLProduct[]; hasMore?: boolean };
@@ -295,7 +297,7 @@ export default function PromoApp() {
     } finally {
       setMlLoadingMore(false);
     }
-  }, [mlLoadingMore, mlPage, query, activeCategory, minDiscount, settings.mattWord, settings.mattTool]);
+  }, [mlLoadingMore, mlPage, query, activeCategory, minDiscount, sortKey, settings.mattWord, settings.mattTool]);
 
   // ── Amazon fetching ────────────────────────────────────────────────────────
   const fetchAmazon = useCallback(async (q: string, category: string, discount: number) => {
@@ -407,7 +409,7 @@ export default function PromoApp() {
 
   // ── Init: só carrega ML na abertura ─────────────────────────────────────────
   useEffect(() => {
-    fetchML('', '', 10);
+    fetchML('', '', 10, 'default');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -673,7 +675,12 @@ export default function PromoApp() {
                   {SORT_OPTIONS.map((opt) => (
                     <button
                       key={opt.key}
-                      onClick={() => { setSortKey(opt.key); setShowSortMenu(false); }}
+                      onClick={() => {
+                        setSortKey(opt.key);
+                        setShowSortMenu(false);
+                        // Para ML, re-busca da API com o sort correto (dados reais)
+                        if (source === 'ml') fetchML(query, activeCategory, minDiscount, opt.key);
+                      }}
                       className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs cursor-pointer transition-all text-left"
                       style={{ color: sortKey === opt.key ? accentColor : '#A0A0A0', background: sortKey === opt.key ? `rgba(${accentRgb},0.08)` : 'transparent' }}
                     >
