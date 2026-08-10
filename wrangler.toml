@@ -14,6 +14,9 @@ binding   = "ASSETS"
 # DATABASE_URL (injetado pelo HappySeeds como secret) usa TCP e não funciona no edge.
 [vars]
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_QR7qjwe8zDJC@ep-rapid-mud-acck6848-pooler.sa-east-1.aws.neon.tech/neondb"
+BTY_LLM_SERVER_BASE_URL = "https://aigw-api.happyseeds.ai/v1"
+LLM_BASE_URL = "https://openrouter.ai/api/v1"
+LLM_MODEL = "google/gemma-4-31b-it:free"
 
 # [[hyperdrive]]
 # binding = "HYPERDRIVE"
