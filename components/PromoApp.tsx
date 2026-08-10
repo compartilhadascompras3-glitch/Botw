@@ -117,7 +117,32 @@ const DISCOUNT_OPTIONS = [
   { value: 70, label: '≥70%' },
 ];
 
-const ML_DEFAULT_QUERIES  = ['notebook', 'smartphone', 'fone bluetooth', 'tv led', 'air fryer'];
+const ML_DEFAULT_QUERIES = [
+  // Eletrônicos
+  'smartphone', 'notebook', 'tv led', 'fone bluetooth', 'tablet', 'smartwatch', 'monitor', 'câmera',
+  // Casa e cozinha
+  'air fryer', 'aspirador', 'liquidificador', 'cafeteira', 'micro-ondas', 'panela elétrica', 'ventilador', 'geladeira',
+  // Moda e vestuário
+  'camiseta masculina', 'vestido feminino', 'tênis masculino', 'tênis feminino', 'calça jeans', 'jaqueta', 'moletom', 'sandália',
+  // Beleza e cuidados
+  'shampoo', 'perfume feminino', 'perfume masculino', 'maquiagem', 'protetor solar', 'creme hidratante',
+  // Esportes
+  'bicicleta', 'suplemento whey', 'tênis corrida', 'mochila', 'bermuda academia', 'halteres',
+  // Bebês e infantil
+  'carrinho de bebê', 'fraldas', 'brinquedo infantil', 'kit bebê',
+  // Livros e papelaria
+  'livro', 'caderno', 'caneta',
+  // Ferramentas
+  'furadeira', 'parafusadeira', 'kit ferramentas',
+  // Automotivo
+  'suporte celular carro', 'capinha celular', 'carregador veicular',
+  // Games
+  'controle gamer', 'headset gamer', 'cadeira gamer',
+  // Animais
+  'ração cachorro', 'ração gato', 'cama pet',
+  // Alimentos
+  'café', 'chocolate', 'whey protein',
+];
 const AMZ_DEFAULT_QUERIES = ['smartphone', 'fone bluetooth', 'smart tv', 'notebook', 'air fryer'];
 const SPE_DEFAULT_QUERIES = ['fone bluetooth', 'smartphone', 'notebook', 'smartwatch', 'air fryer'];
 
@@ -247,20 +272,56 @@ export default function PromoApp() {
     setMlHasMore(false);
     setMlPage(1);
     try {
-      const searchQuery = q.trim() || ML_DEFAULT_QUERIES[Math.floor(Math.random() * ML_DEFAULT_QUERIES.length)];
-      const params = new URLSearchParams({
-        q: searchQuery, category, minDiscount: discount.toString(),
-        mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
-        sort: sort ?? 'default',
-      });
-      const res = await fetch(`/api/ml-deals?${params}`);
-      const data = await res.json() as { products: MLProduct[]; error?: string; hasMore?: boolean; warning?: string };
-      if (!res.ok || data.error) {
-        setMlError(data.error || 'Erro ao buscar promoções.');
+      if (q.trim()) {
+        // Busca específica: usa a query do usuário normalmente
+        const params = new URLSearchParams({
+          q: q.trim(), category, minDiscount: discount.toString(),
+          mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: '1',
+          sort: sort ?? 'default',
+        });
+        const res = await fetch(`/api/ml-deals?${params}`);
+        const data = await res.json() as { products: MLProduct[]; error?: string; hasMore?: boolean; warning?: string };
+        if (!res.ok || data.error) {
+          setMlError(data.error || 'Erro ao buscar promoções.');
+        } else {
+          setMlProducts(data.products || []);
+          setMlHasMore(data.hasMore ?? false);
+          if ((data.products || []).length === 0) setMlError('Nenhuma promoção encontrada. Tente outra busca ou reduza o desconto mínimo.');
+        }
       } else {
-        setMlProducts(data.products || []);
-        setMlHasMore(data.hasMore ?? false);
-        if ((data.products || []).length === 0) setMlError('Nenhuma promoção encontrada. Tente outra busca ou reduza o desconto mínimo.');
+        // Sem query: busca 8 categorias variadas em paralelo para mostrar de tudo
+        const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
+        const queriesToFetch = shuffled.slice(0, 8);
+        const results = await Promise.allSettled(
+          queriesToFetch.map(qItem =>
+            fetch(`/api/ml-deals?${new URLSearchParams({
+              q: qItem, category, minDiscount: discount.toString(),
+              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '12', page: '1',
+              sort: sort ?? 'default',
+            })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>)
+          )
+        );
+        const seen = new Set<string>();
+        const merged: MLProduct[] = [];
+        // Intercala produtos de cada categoria para variar
+        const batches = results
+          .filter((r): r is PromiseFulfilledResult<{ products: MLProduct[] }> => r.status === 'fulfilled')
+          .map(r => r.value.products ?? []);
+        const maxLen = Math.max(...batches.map(b => b.length), 0);
+        for (let i = 0; i < maxLen; i++) {
+          for (const batch of batches) {
+            if (i < batch.length) {
+              const p = batch[i];
+              if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
+            }
+          }
+        }
+        if (merged.length === 0) {
+          setMlError('Nenhuma promoção encontrada. Tente reduzir o desconto mínimo.');
+        } else {
+          setMlProducts(merged);
+          setMlHasMore(true);
+        }
       }
     } catch {
       setMlError('Falha de conexão. Verifique sua internet e tente novamente.');
@@ -274,23 +335,57 @@ export default function PromoApp() {
     setMlLoadingMore(true);
     const nextPage = mlPage + 1;
     try {
-      const searchQuery = query.trim() || ML_DEFAULT_QUERIES[0];
-      const params = new URLSearchParams({
-        q: searchQuery, category: activeCategory, minDiscount: minDiscount.toString(),
-        mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: nextPage.toString(),
-        sort: sortKey,
-      });
-      const res = await fetch(`/api/ml-deals?${params}`);
-      const data = await res.json() as { products: MLProduct[]; hasMore?: boolean };
-      if (res.ok && data.products?.length) {
+      if (query.trim()) {
+        // Busca específica: pagina normalmente
+        const params = new URLSearchParams({
+          q: query.trim(), category: activeCategory, minDiscount: minDiscount.toString(),
+          mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: nextPage.toString(),
+          sort: sortKey,
+        });
+        const res = await fetch(`/api/ml-deals?${params}`);
+        const data = await res.json() as { products: MLProduct[]; hasMore?: boolean };
+        if (res.ok && data.products?.length) {
+          setMlProducts((prev) => {
+            const ids = new Set(prev.map((p) => p.id));
+            return [...prev, ...data.products.filter((p) => !ids.has(p.id))];
+          });
+          setMlPage(nextPage);
+          setMlHasMore(data.hasMore ?? false);
+        } else {
+          setMlHasMore(false);
+        }
+      } else {
+        // Sem query: busca mais 8 categorias aleatórias (diferentes das anteriores)
+        const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
+        const queriesToFetch = shuffled.slice(0, 8);
+        const results = await Promise.allSettled(
+          queriesToFetch.map(qItem =>
+            fetch(`/api/ml-deals?${new URLSearchParams({
+              q: qItem, category: activeCategory, minDiscount: minDiscount.toString(),
+              mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '12', page: '1',
+              sort: sortKey,
+            })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>)
+          )
+        );
         setMlProducts((prev) => {
           const ids = new Set(prev.map((p) => p.id));
-          return [...prev, ...data.products.filter((p) => !ids.has(p.id))];
+          const batches = results
+            .filter((r): r is PromiseFulfilledResult<{ products: MLProduct[] }> => r.status === 'fulfilled')
+            .map(r => r.value.products ?? []);
+          const newProducts: MLProduct[] = [];
+          const maxLen = Math.max(...batches.map(b => b.length), 0);
+          for (let i = 0; i < maxLen; i++) {
+            for (const batch of batches) {
+              if (i < batch.length && !ids.has(batch[i].id)) {
+                ids.add(batch[i].id);
+                newProducts.push(batch[i]);
+              }
+            }
+          }
+          return [...prev, ...newProducts];
         });
         setMlPage(nextPage);
-        setMlHasMore(data.hasMore ?? false);
-      } else {
-        setMlHasMore(false);
+        setMlHasMore(nextPage < 10); // até 10 rodadas de "carregar mais"
       }
     } catch {
       setMlHasMore(false);
