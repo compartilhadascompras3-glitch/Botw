@@ -11,11 +11,15 @@ const LLM_BASE_URL = (process.env.LLM_BASE_URL ?? 'https://openrouter.ai/api/v1'
 const LLM_API_KEY  = process.env.LLM_API_KEY ?? '';
 const LLM_MODEL    = process.env.LLM_MODEL ?? 'google/gemma-4-31b-it:free';
 
-// ── Provider 2 (fallback): Reactus / HappySeeds (só no ambiente da plataforma) ─
+// ── Provider 2: HappySeeds LLM gateway (chat direto, sem limite diário) ───────
+const BTY_BASE  = (process.env.BTY_LLM_SERVER_BASE_URL ?? '').replace(/\/$/, '');
+const BTY_KEY   = process.env.BTY_LLM_SERVER_API_KEY ?? process.env.HAPPYSEEDS_KEY ?? '';
+const BTY_MODEL = 'claude-sonnet-4.6';
+
+// Mantidos para backward-compat (SSE media — não mais usado para chat)
 const REACTUS_BASE = (process.env.REACTUS_BASE_URL ?? '').replace(/\/$/, '');
 const REACTUS_KEY  = process.env.HAPPYSEEDS_KEY ?? process.env.BTY_LLM_SERVER_API_KEY ?? '';
 const PROJECT_ID   = process.env.HAPPYSEEDS_PROJECT_ID ?? process.env.REACTUS_PROJECT_ID ?? '';
-const REACTUS_MODEL = process.env.REACTUS_MODEL ?? 'claude-sonnet-4.6';
 
 interface PromoResult { product: string; versions: string[] }
 
@@ -273,10 +277,12 @@ async function callOpenAICompatible(imageBase64: string, mimeType: string, linkL
   return await callModelOnce(LLM_MODEL, imageBase64, mimeType, linkLine);
 }
 
-/** Fallback: chama o llm_server SSE da Reactus/HappySeeds (formato Anthropic). */
+/** Chama o HappySeeds LLM gateway via Anthropic Messages (chat direto, sem limite diário). */
 async function callReactus(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
+  if (!BTY_BASE || !BTY_KEY) throw new Error('HappySeeds LLM gateway não configurado.');
+
   const requestBody = {
-    model: REACTUS_MODEL,
+    model: BTY_MODEL,
     max_tokens: 2500,
     temperature: 1.0,
     stream: false,
@@ -292,12 +298,13 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
     ],
   };
 
-  const res = await fetch(`${REACTUS_BASE}/v1/llm_server/sse`, {
+  const res = await fetch(`${BTY_BASE}/messages`, {
     method: 'POST',
     headers: {
-      'x-api-key': REACTUS_KEY,
-      'x-bty-app': PROJECT_ID,
-      'x-bty-model': REACTUS_MODEL,
+      'x-api-key': BTY_KEY,
+      'anthropic-version': '2023-06-01',
+      'x-bty-business': 'ReActUs',
+      'x-bty-workspace': 'default',
       'content-type': 'application/json',
     },
     body: JSON.stringify(requestBody),
@@ -306,57 +313,13 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Reactus respondeu ${res.status}: ${errText.slice(0, 300)}`);
+    throw new Error(`HappySeeds LLM respondeu ${res.status}: ${errText.slice(0, 300)}`);
   }
 
-  const sseText = await res.text();
-
-  const failedMatch = sseText.match(/event:\s*llm_server\.failed[\s\S]*?data:\s*({.*})/);
-  if (failedMatch) {
-    try {
-      const failed = JSON.parse(failedMatch[1]) as { message?: string };
-      throw new Error(failed.message ?? 'IA não conseguiu processar a imagem.');
-    } catch { /* segue para parse genérico */ }
-  }
-
-  // Busca o evento completed em qualquer formato de separação de linha
-  const completedMatch = sseText.match(/event:\s*llm_server\.completed\s*\ndata:\s*({[\s\S]*?})\s*(?:\n|$)/);
-  if (completedMatch) {
-    try {
-      const envelope = JSON.parse(completedMatch[1]) as {
-        status: string;
-        data: { content: { type: string; text: string }[] };
-      };
-      if (envelope.status === 'succeeded') {
-        const rawText = envelope.data?.content?.find((c) => c.type === 'text')?.text ?? '';
-        if (rawText) return extractResult(rawText);
-      }
-    } catch {
-      // JSON mal-formado — tenta o parse linha a linha abaixo
-    }
-  }
-
-  // Fallback: parse linha a linha (mais tolerante)
-  for (const chunk of sseText.split('\n\n')) {
-    const lines = chunk.split('\n');
-    const eventLine = lines.find((l) => l.startsWith('event:'));
-    const dataLine  = lines.find((l) => l.startsWith('data:'));
-    if (!eventLine || !dataLine) continue;
-    if (eventLine.replace('event:', '').trim() !== 'llm_server.completed') continue;
-
-    try {
-      const envelope = JSON.parse(dataLine.replace('data:', '').trim()) as {
-        status: string;
-        data: { content: { type: string; text: string }[] };
-      };
-      if (envelope.status !== 'succeeded') continue;
-      const rawText = envelope.data?.content?.find((c) => c.type === 'text')?.text ?? '';
-      if (rawText) return extractResult(rawText);
-    } catch {
-      continue;
-    }
-  }
-  throw new Error('IA não retornou resposta válida.');
+  const data = await res.json() as { content?: { type: string; text: string }[] };
+  const rawText = data.content?.find((c) => c.type === 'text')?.text ?? '';
+  if (!rawText) throw new Error('HappySeeds LLM não retornou conteúdo.');
+  return extractResult(rawText);
 }
 
 // ── Route handler ──────────────────────────────────────────────────────────────
@@ -366,7 +329,7 @@ export async function POST(req: NextRequest) {
   // Providers na nuvem (OpenRouter, OpenAI, etc.) exigem LLM_API_KEY.
   const isLocalProvider = /localhost|127\.0\.0\.1/.test(LLM_BASE_URL);
   const hasOpenAI  = Boolean(LLM_BASE_URL) && (isLocalProvider || Boolean(LLM_API_KEY));
-  const hasReactus = Boolean(REACTUS_BASE && REACTUS_KEY);
+  const hasReactus = Boolean(BTY_BASE && BTY_KEY);
 
   if (!hasOpenAI && !hasReactus) {
     console.error('generate-promo: nenhum provider de IA configurado (defina LLM_BASE_URL e LLM_API_KEY)');
