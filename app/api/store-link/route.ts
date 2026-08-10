@@ -7,25 +7,28 @@ export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get('slug');
   if (!slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
 
-  try {
-    const html = await fetch(`https://www.promobit.com.br/oferta/${slug}/`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        Accept: 'text/html',
-        Referer: 'https://www.promobit.com.br/',
-      },
-      signal: AbortSignal.timeout(10000),
-    }).then(r => r.text());
+  // O offer_id está sempre no final do slug: "titulo-do-produto-2974309"
+  const idMatch = slug.match(/[-_](\d{5,})$/);
+  const offerId = idMatch?.[1];
 
-    // Extrai o link de rastreamento da loja
-    const match = html.match(/"url":"(https:\/\/promobit\.webtrack\.com\.br\/redirecionar\/[^"]+)"/);
-    if (match?.[1]) {
-      return NextResponse.json({ url: match[1] });
-    }
+  if (offerId) {
+    try {
+      // Busca o HTML da página /Redirect/to/ID/ e extrai o link real da loja
+      const html = await fetch(`https://www.promobit.com.br/Redirect/to/${offerId}/`, {
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
+        signal: AbortSignal.timeout(8000),
+      }).then(r => r.text());
 
-    // Fallback: link da página da oferta
-    return NextResponse.json({ url: `https://www.promobit.com.br/oferta/${slug}/` });
-  } catch {
-    return NextResponse.json({ url: `https://www.promobit.com.br/oferta/${slug}/` });
+      // l = 'URL_DA_LOJA' no JS inline
+      const m1 = html.match(/,\s*l\s*=\s*'(https?:[^']+)'/);
+      // fallback: href do "clique aqui"
+      const m2 = html.match(/<a\s+href="(https?:[^"]+)"\s+href/);
+
+      const storeUrl = m1?.[1] ?? m2?.[1];
+      if (storeUrl) return NextResponse.json({ url: storeUrl });
+    } catch { /* segue para fallback */ }
   }
+
+  // Último fallback: link da página da oferta no Promobit
+  return NextResponse.json({ url: `https://www.promobit.com.br/oferta/${slug}/` });
 }
