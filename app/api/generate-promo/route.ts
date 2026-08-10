@@ -14,9 +14,21 @@ const BTY_KEY   = process.env.BTY_LLM_SERVER_API_KEY ?? process.env.HAPPYSEEDS_K
 const BTY_MODEL = 'claude-sonnet-4.6';
 
 // ── Provider 3: Groq (gratuito, limite generoso, vision via llama) ─────────────
-const GROQ_KEY   = process.env.GROQ_API_KEY ?? '';
+const GROQ_KEY_ENV = process.env.GROQ_API_KEY ?? '';
 const GROQ_BASE  = 'https://api.groq.com/openai/v1';
-const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'; // suporta visão, grátis
+const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+// Lê do banco se não estiver no env
+async function getGroqKey(): Promise<string> {
+  if (GROQ_KEY_ENV) return GROQ_KEY_ENV;
+  try {
+    const { db } = await import('@/db');
+    const { settings: settingsTable } = await import('@/db/schemas/settings');
+    const { eq } = await import('drizzle-orm');
+    const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'groq_api_key')).limit(1);
+    return rows[0]?.value ?? '';
+  } catch { return ''; }
+}
 
 // Mantidos para backward-compat (SSE media — não mais usado para chat)
 const REACTUS_BASE = (process.env.REACTUS_BASE_URL ?? '').replace(/\/$/, '');
@@ -326,7 +338,8 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
 
 /** Chama o Groq (llama-4-scout com visão, grátis) */
 async function callGroq(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
-  if (!GROQ_KEY) throw new Error('GROQ_API_KEY não configurado.');
+  const key = await getGroqKey();
+  if (!key) throw new Error('GROQ_API_KEY não configurado.');
   const dataUrl = `data:${mimeType};base64,${imageBase64}`;
   const body = {
     model: GROQ_MODEL,
@@ -345,7 +358,7 @@ async function callGroq(imageBase64: string, mimeType: string, linkLine: string)
   };
   const res = await fetch(`${GROQ_BASE}/chat/completions`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${GROQ_KEY}` },
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${key}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30000),
   });
@@ -360,14 +373,14 @@ async function callGroq(imageBase64: string, mimeType: string, linkLine: string)
 }
 
 
-
 export async function POST(req: NextRequest) {
   // Providers locais (Ollama / LM Studio em localhost) não exigem chave.
   // Providers na nuvem (OpenRouter, OpenAI, etc.) exigem LLM_API_KEY.
   const isLocalProvider = /localhost|127\.0\.0\.1/.test(LLM_BASE_URL);
   const hasOpenAI  = Boolean(LLM_BASE_URL) && (isLocalProvider || Boolean(LLM_API_KEY));
   const hasReactus = Boolean(BTY_BASE && BTY_KEY);
-  const hasGroq    = Boolean(GROQ_KEY);
+  const groqKey    = await getGroqKey();
+  const hasGroq    = Boolean(groqKey);
 
   if (!hasOpenAI && !hasReactus && !hasGroq) {
     return NextResponse.json(
