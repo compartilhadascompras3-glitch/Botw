@@ -102,6 +102,8 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
       if (!imageBase64) throw new Error('Não foi possível carregar a imagem do produto.');
 
       // 2. Chama a IA com dados do produto (ajuda modelos com visão fraca a preencher preço)
+      const coupon = (p as { coupon?: string | null }).coupon ?? null;
+
       const res = await fetch('/api/generate-promo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,6 +115,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
           price: p.price,
           originalPrice: p.original_price ?? undefined,
           discountPercent: p.discount_percent,
+          coupon,
         }),
         signal: AbortSignal.timeout(40000),
       });
@@ -125,7 +128,23 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
       const data = await res.json() as PromoResult;
       if (!data.versions || data.versions.length === 0) throw new Error('Nenhum texto gerado');
 
-      const cleaned = data.versions.map(stripLinkLine);
+      // Garante que o cupom apareça no texto mesmo se a IA esquecer de incluir
+      const couponLine = coupon ? `🏷️ Use o cupom *${coupon}*` : null;
+      const ensureCoupon = (text: string) => {
+        if (!couponLine) return text;
+        if (text.toLowerCase().includes(coupon!.toLowerCase())) return text; // já está
+        // Insere após a linha de preço (linha com R$) ou antes das specs (linha com •)
+        const lines = text.split('\n');
+        const priceIdx = lines.findLastIndex((l) => l.includes('R$'));
+        const insertAt = priceIdx >= 0 ? priceIdx + 1 : lines.findIndex((l) => l.trim().startsWith('•'));
+        if (insertAt > 0) {
+          lines.splice(insertAt, 0, couponLine);
+          return lines.join('\n');
+        }
+        return text + '\n' + couponLine;
+      };
+
+      const cleaned = data.versions.map((v) => ensureCoupon(stripLinkLine(v)));
       setVersions(cleaned);
       setSelectedIdx(0);
     } catch (e) {

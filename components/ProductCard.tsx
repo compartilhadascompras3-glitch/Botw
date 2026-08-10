@@ -144,6 +144,17 @@ export function ProductCard({ product, accentColor = '#00D4FF', accentGrad, alre
           </span>
         </div>
 
+        {/* Cupom de desconto */}
+        {(product as AmazonProduct | ShopeeProduct).coupon && (
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg w-fit"
+            style={{ background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.3)' }}>
+            <span className="text-xs">🏷️</span>
+            <span className="text-xs font-bold tracking-wider" style={{ color: '#FFD700' }}>
+              {(product as AmazonProduct | ShopeeProduct).coupon}
+            </span>
+          </div>
+        )}
+
         {/* Stats */}
         <div className="flex items-center gap-2 text-xs" style={{ color: '#666' }}>
           {!isPromobit && (product as MLProduct).sold_quantity > 0 && (

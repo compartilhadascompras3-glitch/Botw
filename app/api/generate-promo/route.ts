@@ -385,8 +385,9 @@ export async function POST(req: NextRequest) {
       price?: number;
       originalPrice?: number;
       discountPercent?: number;
+      coupon?: string | null;
     };
-    const { imageBase64, mimeType, link, title, price, originalPrice, discountPercent } = body;
+    const { imageBase64, mimeType, link, title, price, originalPrice, discountPercent, coupon } = body;
 
     if (!imageBase64 || !mimeType) {
       return NextResponse.json({ error: 'imageBase64 e mimeType são obrigatórios.' }, { status: 400 });
@@ -400,6 +401,7 @@ export async function POST(req: NextRequest) {
       originalPrice ? `Preço original: R$ ${originalPrice.toFixed(2).replace('.', ',')}` : '',
       price ? `Preço com desconto: R$ ${price.toFixed(2).replace('.', ',')}` : '',
       discountPercent ? `Desconto: ${discountPercent}%` : '',
+      coupon ? `Cupom de desconto: ${coupon} — inclua a linha "🏷️ Use o cupom *${coupon}*" logo após os preços` : '',
       link ? `Link da oferta: ${link}` : '',
     ].filter(Boolean).join('\n');
 

@@ -35,6 +35,7 @@ export interface PromobitOffer {
   store_domain: string;
   store_id: number;
   offer_status_name?: string;
+  offer_coupon?: string | null;
 }
 
 export interface AmazonProduct {
@@ -51,6 +52,7 @@ export interface AmazonProduct {
   stars?: number;
   reviews?: number;
   prime?: boolean;
+  coupon?: string | null;
 }
 
 export interface ShopeeProduct {
@@ -66,6 +68,7 @@ export interface ShopeeProduct {
   stars?: number;
   reviews?: number;
   sold?: number;
+  coupon?: string | null;
 }
 
 // In-process cache (survives across requests within the same Node.js instance)
@@ -133,6 +136,7 @@ export function toAmazon(o: PromobitOffer): AmazonProduct {
     permalink: offerPermalink(o),
     slug: o.offer_slug,
     source: 'amazon',
+    coupon: o.offer_coupon || null,
   };
 }
 
@@ -147,5 +151,6 @@ export function toShopee(o: PromobitOffer): ShopeeProduct {
     permalink: offerPermalink(o),
     slug: o.offer_slug,
     source: 'shopee',
+    coupon: o.offer_coupon || null,
   };
 }
