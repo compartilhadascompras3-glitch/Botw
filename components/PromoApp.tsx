@@ -186,6 +186,7 @@ export default function PromoApp() {
 
   // ML state
   const [mlProducts, setMlProducts] = useState<MLProduct[]>([]);
+  const [mlFilterPromobit, setMlFilterPromobit] = useState(false);
   const [mlLoading, setMlLoading] = useState(false);
   const [mlLoadingMore, setMlLoadingMore] = useState(false);
   const [mlError, setMlError] = useState<string | null>(null);
@@ -693,8 +694,12 @@ export default function PromoApp() {
       if (query.trim()) list = list.filter(p => p.title.toLowerCase().includes(query.toLowerCase()));
       list = list.filter(p => p.discount_percent >= minDiscount);
     }
+    // Filtro só Promobit na aba ML
+    if (source === 'ml' && mlFilterPromobit) {
+      list = list.filter(p => (p as MLProduct).source === 'ml_promobit');
+    }
     return list;
-  }, [rawProducts, sortKey, dataSource, query, minDiscount, source]);
+  }, [rawProducts, sortKey, dataSource, query, minDiscount, source, mlFilterPromobit]);
 
   const accentColor = source === 'ml' ? '#00D4FF' : source === 'amazon' ? '#FF9900' : '#EE4D2D';
   const accentGrad  = source === 'ml'
@@ -816,6 +821,21 @@ export default function PromoApp() {
                 {opt.label}
               </button>
             ))}
+
+            {/* Toggle Só Promobit — só na aba ML */}
+            {source === 'ml' && (
+              <button
+                onClick={() => setMlFilterPromobit(v => !v)}
+                className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-all duration-150 cursor-pointer"
+                style={
+                  mlFilterPromobit
+                    ? { background: 'rgba(0,212,255,0.15)', color: '#00D4FF', border: '1px solid rgba(0,212,255,0.4)' }
+                    : { background: 'transparent', color: '#666', border: '1px solid rgba(255,255,255,0.06)' }
+                }
+              >
+                <span style={{ fontSize: 10 }}>●</span> Só Promobit
+              </button>
+            )}
 
             {/* Ordenação */}
             <div ref={sortMenuRef} className="relative ml-auto">
