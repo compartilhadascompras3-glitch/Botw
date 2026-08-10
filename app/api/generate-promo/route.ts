@@ -52,37 +52,36 @@ Use os dados de produto fornecidos no texto (título, preço, desconto) como bas
 ═══════════════════════════════════════
 A ISCA — regra principal
 ═══════════════════════════════════════
-A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica e identificável — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
+A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
 
-A isca DEVE mencionar algo específico deste produto: o uso, a característica marcante, o preço absurdo, ou — quando for uma marca amplamente conhecida (Samsung, Apple, Nike, Sony, LG, Xiaomi, Philips, Tramontina etc.) — a própria marca, mas só se soar natural. Não force a marca quando ela não acrescenta nada.
+ATENÇÃO: As 3 versões DEVEM ter iscas completamente diferentes entre si, cada uma com um ângulo exclusivo:
 
-Exemplos bons de iscas para um "Samsung Galaxy A55":
-✓ "Galaxy desse preço não faz sentido nenhum"  ← marca relevante, orgânico
-✓ "Bateria que dura dois dias por esse valor?"  ← benefício específico, sem marca
-✓ "Tá mais barato que muita coisa sem metade das specs"  ← preço/valor, sem marca
+VERSÃO 1 — Ângulo PREÇO: menciona o valor ou desconto de forma surpreendente. Usa o número real.
+  Ex: "R$ 49 por 1kg de creatina é quase impossível"
+  Ex: "Esse celular por menos de 1.300 é coisa séria"
 
-Exemplos bons de iscas para "Creatina Soldiers Nutrition 1kg":
-✓ "1kg de creatina por menos de X reais, sério?"  ← preço específico
-✓ "Quem malha sabe o que essa quantidade representa"  ← uso prático
-✓ "Soldiers com esse desconto é pra comprar logo"  ← marca menos conhecida, mas nome curto funciona
+VERSÃO 2 — Ângulo USO PRÁTICO: fala do que o produto faz, resolve ou muda na vida. Sem mencionar preço.
+  Ex: "Bateria que dura dois dias sem carregar"
+  Ex: "Quem malha sabe o que 1kg de creatina representa"
+  Ex: "Café de cápsula em casa sem gastar fortunas"
 
-PROIBIDO na isca:
-✗ Frases genéricas que servem para qualquer produto ("Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Achei isso e precisei compartilhar")
-✗ "pessoal", "olha só", "atenção", "aproveite", "corre", "imperdível", "incrível", "oferta", "promoção", "compartilhando"
-✗ Começar com "Esse/Esta/Aqui/Você"
-✗ Começar com pronomes pessoais ("Eu", "A gente")
+VERSÃO 3 — Ângulo MARCA ou CONTEXTO: menciona a marca SE for reconhecível (Samsung, Apple, Nike, Sony, Philips, Nespresso, Tramontina, Xiaomi etc.) ou faz um comentário de contexto/comparação. Se a marca não for famosa, use comparação ou contexto.
+  Ex: "Galaxy desse preço não faz sentido nenhum" ← marca famosa
+  Ex: "Tá mais barato que produto sem metade das especificações" ← contexto
+  Ex: "Soldiers com esse desconto é raro de ver" ← marca menos conhecida mas nome funciona
 
-CADA VERSÃO deve ter um ÂNGULO diferente — escolha os mais naturais para este produto específico:
-- Ângulo A: a marca ou modelo (só se for reconhecível e soar orgânico)
-- Ângulo B: o preço ou desconto (compara com o que vale, usa o número real)
-- Ângulo C: o uso prático ou benefício concreto (o que muda na vida de quem usa)
+PROIBIDO em qualquer isca:
+✗ Frases genéricas: "Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Olha essa oferta"
+✗ Palavras: "pessoal", "olha só", "atenção", "aproveite", "corre", "imperdível", "incrível", "oferta", "promoção", "compartilhando", "confira"
+✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
+✗ Duas versões com iscas parecidas ou do mesmo ângulo
 
 ═══════════════════════════════════════
 ESTRUTURA DE CADA VERSÃO (4 partes)
 ═══════════════════════════════════════
 
 PARTE 1 — ISCA
-[frase específica deste produto, ângulo diferente por versão]
+[frase específica deste produto, ângulo exclusivo por versão]
 
 PARTE 2 — PRODUTO E PREÇO
 [emoji do produto] [Nome do produto]
@@ -118,7 +117,7 @@ FORMATO FINAL
 REGRAS FINAIS:
 - Texto puro — ZERO asteriscos, ZERO markdown, ZERO negrito
 - Emojis APENAS nos lugares indicados acima
-- As 3 iscas OBRIGATORIAMENTE diferentes: marca/modelo, preço/valor, uso/benefício
+- As 3 iscas OBRIGATORIAMENTE de ângulos diferentes: preço, uso prático, marca/contexto
 - Specs apenas do que estiver visível na imagem
 
 IMPORTANTE SOBRE O JSON DE SAÍDA:
@@ -139,41 +138,37 @@ Você receberá os dados do produto: nome, preço original, preço com desconto,
 ═══════════════════════════════════════
 A ISCA — regra principal
 ═══════════════════════════════════════
-A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica e identificável — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
+A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
 
-A isca DEVE mencionar algo específico deste produto: o uso, a característica marcante, o preço absurdo, ou a marca quando for reconhecível (Samsung, Apple, Nike, Sony, LG, Xiaomi, Philips, Tramontina, Semp, etc.).
+ATENÇÃO: As 3 versões DEVEM ter iscas completamente diferentes entre si, cada uma com um ângulo exclusivo:
 
-Exemplos bons para "Samsung Galaxy A55 — De R$ 2.199 por R$ 1.299":
-✓ "Galaxy desse preço não faz sentido nenhum"
-✓ "Bateria de dois dias por menos de 1.300?"
-✓ "Tá mais barato que muita coisa bem pior"
+VERSÃO 1 — Ângulo PREÇO: menciona o valor ou desconto de forma surpreendente. Usa o número real.
+  Ex: "R$ 49 por 1kg de creatina é quase impossível"
+  Ex: "Esse celular por menos de 1.300 é coisa séria"
 
-Exemplos bons para "Creatina Soldiers Nutrition 1kg — De R$ 89 por R$ 49":
-✓ "1kg de creatina por 49 reais, sério isso?"
-✓ "Quem malha sabe o que essa quantidade representa"
-✓ "Soldiers com esse desconto é pra comprar logo"
+VERSÃO 2 — Ângulo USO PRÁTICO: fala do que o produto faz, resolve ou muda na vida. SEM mencionar preço.
+  Ex: "Bateria que dura dois dias sem carregar"
+  Ex: "Quem malha sabe o que 1kg de creatina representa"
+  Ex: "Café de cápsula em casa todo dia sem culpa"
 
-Exemplos bons para "Cafeteira Nespresso Essenza Mini — De R$ 599 por R$ 349":
-✓ "Nespresso por 349 é coisa rara de ver"
-✓ "Café de cápsula em casa por esse valor?"
-✓ "Essenza Mini mais barata do que muita panela"
+VERSÃO 3 — Ângulo MARCA ou CONTEXTO: menciona a marca SE for reconhecível (Samsung, Apple, Nike, Sony, Philips, Nespresso, Tramontina, Xiaomi, Oster, Arno, Lego etc.) ou faz comparação/contexto. Se a marca for desconhecida, use contexto.
+  Ex: "Galaxy desse preço não faz sentido nenhum" ← marca famosa
+  Ex: "Tá mais barato que coisa bem pior no mercado" ← contexto
+  Ex: "Soldiers com esse desconto é raro de ver" ← marca menos conhecida mas nome funciona
 
-PROIBIDO na isca:
-✗ Frases genéricas que servem para qualquer produto: "Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Achei isso e precisei compartilhar", "Olha essa oferta"
+PROIBIDO em qualquer isca:
+✗ Frases genéricas: "Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Olha essa oferta", "Achei isso e precisei compartilhar"
 ✗ Palavras: "pessoal", "olha só", "atenção", "aproveite", "corre", "imperdível", "incrível", "oferta", "promoção", "compartilhando", "confira"
 ✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
-
-CADA VERSÃO deve ter um ÂNGULO diferente — os 3 ângulos para este produto:
-- Ângulo A: marca ou modelo (só se reconhecível e soar orgânico)
-- Ângulo B: preço ou desconto (usa o número real do produto)
-- Ângulo C: uso prático ou benefício concreto
+✗ Duas versões com iscas parecidas ou do mesmo ângulo
+✗ Versão 2 mencionar preço — ela é exclusivamente sobre uso/benefício
 
 ═══════════════════════════════════════
 ESTRUTURA DE CADA VERSÃO (4 partes)
 ═══════════════════════════════════════
 
 PARTE 1 — ISCA
-[frase criativa e específica deste produto, ângulo diferente por versão]
+[frase criativa e específica deste produto, ângulo exclusivo por versão]
 
 PARTE 2 — PRODUTO E PREÇO (linha em branco após a isca)
 [emoji do produto] [Nome do produto]
@@ -201,8 +196,8 @@ FORMATO FINAL ESPERADO (use \\n no JSON)
 
 REGRAS FINAIS:
 - Texto puro — ZERO asteriscos, ZERO markdown, ZERO negrito (exceto o código do cupom)
-- Emojis APENAS nos lugares indicados (produto, preços, specs não levam emoji)
-- As 3 iscas OBRIGATORIAMENTE diferentes entre si, cada uma com ângulo único
+- Emojis APENAS nos lugares indicados (specs não levam emoji)
+- As 3 iscas OBRIGATORIAMENTE de ângulos diferentes: preço, uso prático, marca/contexto
 - O array "versions" deve ter EXATAMENTE 3 strings — uma por versão completa
 
 RESPONDA APENAS com JSON válido sem markdown:
