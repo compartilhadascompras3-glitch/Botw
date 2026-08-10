@@ -289,38 +289,60 @@ export default function PromoApp() {
           if ((data.products || []).length === 0) setMlError('Nenhuma promoção encontrada. Tente outra busca ou reduza o desconto mínimo.');
         }
       } else {
-        // Sem query: busca todas as categorias, página 1, em paralelo — rápido
+        // Sem query: carrega em lotes progressivos para aparecer rápido
+        // Lote 1 (6 categorias) → mostra imediatamente
+        // Lote 2 e 3 em background → vai adicionando sem travar a tela
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
-        const fetchPage = (qItem: string, pg: number) =>
+
+        const fetchCat = (qItem: string, pg: number) =>
           fetch(`/api/ml-deals?${new URLSearchParams({
             q: qItem, category, minDiscount: discount.toString(),
             mattWord: settings.mattWord, mattTool: settings.mattTool, limit: '50', page: pg.toString(),
             sort: sort ?? 'default',
           })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
 
-        const settled = await Promise.allSettled(shuffled.map(qItem => fetchPage(qItem, 1)));
-
-        const seen = new Set<string>();
-        const merged: MLProduct[] = [];
-        const batches = settled
-          .filter((r): r is PromiseFulfilledResult<{ products: MLProduct[] }> => r.status === 'fulfilled')
-          .map(r => r.value.products ?? []);
-        // Intercala para variar categorias
-        const maxLen = Math.max(...batches.map(b => b.length), 0);
-        for (let i = 0; i < maxLen; i++) {
-          for (const batch of batches) {
-            if (i < batch.length) {
-              const p = batch[i];
-              if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
+        const mergeInto = (prev: MLProduct[], batches: { products: MLProduct[] }[]) => {
+          const ids = new Set(prev.map(p => p.id));
+          const newItems: MLProduct[] = [];
+          const maxLen = Math.max(...batches.map(b => b.products.length), 0);
+          for (let i = 0; i < maxLen; i++) {
+            for (const b of batches) {
+              if (i < b.products.length && !ids.has(b.products[i].id)) {
+                ids.add(b.products[i].id);
+                newItems.push(b.products[i]);
+              }
             }
           }
+          return newItems;
+        };
+
+        const BATCH_SIZE = 6;
+        const batches = [];
+        for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
+          batches.push(shuffled.slice(i, i + BATCH_SIZE));
         }
-        if (merged.length === 0) {
-          setMlError('Nenhuma promoção encontrada. Tente reduzir o desconto mínimo.');
-        } else {
-          setMlProducts(merged);
+
+        // Lote 1: aguarda e mostra logo
+        const first = await Promise.all(batches[0].map(q => fetchCat(q, 1)));
+        const firstNew = mergeInto([], first);
+        if (firstNew.length > 0) {
+          setMlProducts(firstNew);
           setMlHasMore(true);
           setMlPage(1);
+          setMlLoading(false); // libera a tela agora
+        }
+
+        // Lotes restantes: em background, sem bloquear UI
+        for (let b = 1; b < batches.length; b++) {
+          const results = await Promise.all(batches[b].map(q => fetchCat(q, 1)));
+          setMlProducts(prev => {
+            const newItems = mergeInto(prev, results);
+            return newItems.length > 0 ? [...prev, ...newItems] : prev;
+          });
+        }
+
+        if (firstNew.length === 0) {
+          setMlError('Nenhuma promoção encontrada. Tente reduzir o desconto mínimo.');
         }
       }
     } catch {
