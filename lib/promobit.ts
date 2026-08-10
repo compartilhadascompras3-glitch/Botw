@@ -120,9 +120,47 @@ function photoUrl(path: string): string {
   return `${PHOTO_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+// Cache de links reais da loja (resolvidos via /Redirect/to/ID/)
+const redirectCache = new Map<number, string>();
+
+/** Resolve o link real da loja a partir da página de redirect da Promobit */
+async function resolveStoreUrl(offerId: number): Promise<string> {
+  if (redirectCache.has(offerId)) return redirectCache.get(offerId)!;
+
+  const redirectUrl = `https://www.promobit.com.br/Redirect/to/${offerId}/`;
+  try {
+    const res = await fetch(redirectUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
+      signal: AbortSignal.timeout(8000),
+    });
+    const html = await res.text();
+    // O JS da página tem: var l = 'URL_DA_LOJA'
+    const m = html.match(/var\s+l\s*=\s*['"]([^'"]+)['"]/);
+    const storeUrl = m?.[1] ?? redirectUrl;
+    redirectCache.set(offerId, storeUrl);
+    return storeUrl;
+  } catch {
+    return redirectUrl;
+  }
+}
+
 function offerPermalink(offer: PromobitOffer): string {
   // Usa o link de redirect direto para a loja (sem passar pela página do Promobit)
   return `https://www.promobit.com.br/Redirect/to/${offer.offer_id}/`;
+}
+
+/** Resolve os permalinks de uma lista de ofertas para os links reais da loja */
+export async function resolvePermalinks<T extends { id: string; permalink: string }>(
+  items: T[],
+  offerIds: number[]
+): Promise<T[]> {
+  const resolved = await Promise.all(
+    items.map(async (item, i) => {
+      const storeUrl = await resolveStoreUrl(offerIds[i]);
+      return { ...item, permalink: storeUrl };
+    })
+  );
+  return resolved;
 }
 
 export function toAmazon(o: PromobitOffer): AmazonProduct {

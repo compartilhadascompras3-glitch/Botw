@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   fetchPromobitOffers,
   STORE_ID_ML,
+  resolvePermalinks,
 } from '@/lib/promobit';
 import type { MLProduct } from '@/app/api/ml-deals/route';
 
@@ -30,7 +31,9 @@ export async function GET(req: NextRequest) {
     // Ordena por desconto decrescente
     filtered.sort((a, b) => b.offer_discont_percentage - a.offer_discont_percentage);
 
-    const products: MLProduct[] = filtered.slice(0, limit).map(o => ({
+    const sliced = filtered.slice(0, limit);
+
+    const base: MLProduct[] = sliced.map(o => ({
       id:                 `pb_${o.offer_id}`,
       title:              o.offer_title,
       price:              o.offer_price,
@@ -47,6 +50,8 @@ export async function GET(req: NextRequest) {
       seller_name:        'Mercado Livre',
       source:             'ml_promobit',
     }));
+
+    const products = await resolvePermalinks(base, sliced.map(o => o.offer_id));
 
     return NextResponse.json({ products, total: products.length });
   } catch (e) {
