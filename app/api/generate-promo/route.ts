@@ -380,18 +380,20 @@ async function callOpenAICompatible(imageBase64: string, mimeType: string, linkL
 async function callReactus(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
   if (!BTY_BASE || !BTY_KEY) throw new Error('HappySeeds LLM gateway não configurado.');
 
+  const userText = `Gere EXATAMENTE 3 versões de copywriting para WhatsApp usando os dados do produto abaixo. APENAS o JSON, zero texto fora do JSON.\n\n${linkLine.trim()}`;
+
   const requestBody = {
     model: BTY_MODEL,
     max_tokens: 2500,
     temperature: 1.0,
     stream: false,
-    system: SYSTEM_PROMPT,
+    system: GROQ_SYSTEM_PROMPT,
     messages: [
       {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
-          { type: 'text', text: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. O JSON de saída deve ter o campo "versions" com EXATAMENTE 3 strings. Cada string é uma versão completa. APENAS o JSON, zero texto fora do JSON, zero markdown, zero asteriscos.${linkLine}` },
+          { type: 'text', text: userText },
         ],
       },
     ],
