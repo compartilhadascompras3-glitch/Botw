@@ -52,6 +52,7 @@ export async function GET() {
     return NextResponse.json({
       targets:         targetsRaw  ? JSON.parse(targetsRaw) : [],
       isRunning:       runningRaw  === 'true',
+      running:         runningRaw  === 'true',   // alias usado pelo SchedulerPanel
       intervalMinutes: intervalRaw ? parseInt(intervalRaw) : 30,
       jitterPercent:   jitterRaw   ? parseInt(jitterRaw)   : 20,
       scheduleEnabled: schedEnRaw  === 'true',
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as {
       targets?:         { id: string; name: string }[];
       isRunning?:       boolean;
+      running?:         boolean;   // alias do SchedulerPanel
       intervalMinutes?: number;
       jitterPercent?:   number;
       scheduleEnabled?: boolean;
@@ -83,9 +85,12 @@ export async function POST(req: NextRequest) {
       currentIndex?:    number;
     };
 
+    // Aceita tanto isRunning quanto running
+    const runningVal = body.running ?? body.isRunning;
+
     const ops: Promise<unknown>[] = [];
     if (body.targets         !== undefined) ops.push(setSetting(KEY_TARGETS,   JSON.stringify(body.targets)));
-    if (body.isRunning       !== undefined) ops.push(setSetting(KEY_RUNNING,   String(body.isRunning)));
+    if (runningVal           !== undefined) ops.push(setSetting(KEY_RUNNING,   String(runningVal)));
     if (body.intervalMinutes !== undefined) ops.push(setSetting(KEY_INTERVAL,  String(body.intervalMinutes)));
     if (body.jitterPercent   !== undefined) ops.push(setSetting(KEY_JITTER,    String(body.jitterPercent)));
     if (body.scheduleEnabled !== undefined) ops.push(setSetting(KEY_SCHED_EN,  String(body.scheduleEnabled)));

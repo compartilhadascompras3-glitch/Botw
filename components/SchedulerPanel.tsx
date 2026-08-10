@@ -246,6 +246,7 @@ export function SchedulerPanel() {
 
   // ── Carrega estado inicial do scheduler ──────────────────────────────────
   // Tenta wa-server; se falhar (Render dormindo), usa o banco como fallback
+  const autoStartedRef = useRef(false);
   useEffect(() => {
     // Scheduler roda no cliente — carrega config do banco
     fetch('/api/bot-state')
@@ -260,6 +261,7 @@ export function SchedulerPanel() {
         statusEnabled?: boolean;
         groupsEnabled?: boolean;
         currentIndex?: number;
+        running?: boolean;
       }) => {
         setSched((s) => ({
           ...s,
@@ -271,9 +273,20 @@ export function SchedulerPanel() {
           scheduleEnd:     d.scheduleEnd      ?? s.scheduleEnd,
           statusEnabled:   d.statusEnabled    ?? s.statusEnabled,
           groupsEnabled:   d.groupsEnabled    ?? s.groupsEnabled,
+          // Preserva running=true do banco para reativar após F5
+          running:         d.running          ?? s.running,
         }));
+        // Se estava rodando antes do F5, reagenda o timer
+        if (d.running && !autoStartedRef.current) {
+          autoStartedRef.current = true;
+          const interval = d.intervalMinutes ?? 30;
+          const jitter   = d.jitterPercent   ?? 20;
+          totalSecondsRef.current = interval * 60;
+          scheduleNext(interval, jitter);
+        }
       })
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Timer cliente: dispara mensagens sem depender de servidor externo ──────
@@ -317,11 +330,17 @@ export function SchedulerPanel() {
     });
 
     setSendResult({ ok: allOk, msg: results.join(' · ') || 'Enviado.' });
-    setTimeout(() => { refreshMessages(); setSendResult(null); }, 3000);
 
-    // Avança índice
-    useBotStore.getState().advanceIndex();
-  }, [isWaReady, sched.groupsEnabled, sched.statusEnabled, sched.targets, addHistoryDb, refreshMessages]);
+    // Se sendOnce: deleta do banco e do store; caso contrário só avança índice
+    if (msg.sendOnce) {
+      await fetch(`/api/messages?id=${encodeURIComponent(msg.id)}`, { method: 'DELETE' }).catch(() => {});
+      useBotStore.getState().removeMessage(msg.id);
+    } else {
+      useBotStore.getState().advanceIndex();
+    }
+
+    setTimeout(() => { refreshMessages(); setSendResult(null); }, 3000);
+  }, [isWaReady, sched.groupsEnabled, sched.statusEnabled, sched.targets, addHistoryDb, refreshMessages, sendMessage, postStatus]);
 
   // Agenda próximo disparo
   const scheduleNext = useCallback((intervalMin: number, jitter: number) => {
@@ -394,6 +413,7 @@ export function SchedulerPanel() {
           statusEnabled:   sched.statusEnabled,
           groupsEnabled:   sched.groupsEnabled,
           currentIndex:    sched.currentIndex ?? 0,
+          running:         sched.running,
         }),
       }).catch(() => {});
     }, 800);
@@ -401,7 +421,7 @@ export function SchedulerPanel() {
   }, [
     sched.targets, sched.intervalMinutes, sched.jitterPercent,
     sched.scheduleEnabled, sched.scheduleStart, sched.scheduleEnd,
-    sched.statusEnabled, sched.groupsEnabled, sched.currentIndex,
+    sched.statusEnabled, sched.groupsEnabled, sched.currentIndex, sched.running,
   ]);
 
   // ── Helpers de config ────────────────────────────────────────────────────
