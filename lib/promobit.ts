@@ -134,9 +134,15 @@ async function resolveStoreUrl(offerId: number): Promise<string> {
       signal: AbortSignal.timeout(8000),
     });
     const html = await res.text();
-    // O JS da página tem: var l = 'URL_DA_LOJA'
-    const m = html.match(/var\s+l\s*=\s*['"]([^'"]+)['"]/);
-    const storeUrl = m?.[1] ?? redirectUrl;
+
+    // Tenta 1: l = 'URL' no JS inline (aspas simples escapadas como \' ou normais)
+    const m1 = html.match(/,\s*l\s*=\s*'(https?:[^']+)'/);
+    // Tenta 2: href do link "clique aqui" — sempre presente como fallback
+    const m2 = html.match(/<a\s+href="(https?:[^"]+)"\s+href/);
+    // Tenta 3: qualquer URL de loja conhecida no href
+    const m3 = html.match(/href="(https?:\/\/(?:www\.amazon\.com\.br|shopee\.com\.br|mercadolivre\.com\.br)[^"]+)"/);
+
+    const storeUrl = m1?.[1] ?? m2?.[1] ?? m3?.[1] ?? redirectUrl;
     redirectCache.set(offerId, storeUrl);
     return storeUrl;
   } catch {
