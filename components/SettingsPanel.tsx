@@ -25,12 +25,15 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
   const [saved, setSaved] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [mlNickname, setMlNickname] = useState<string | null>(null);
+  const [groupLink, setGroupLink] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [groupSaved, setGroupSaved] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { setLocal(settings); }, [settings]);
 
-  // Verificar se ML está conectado
+  // Carregar config do grupo e status ML ao abrir
   useEffect(() => {
     if (!open) return;
     fetch('/api/ml-auth/status')
@@ -39,7 +42,24 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
         setMlNickname(d?.connected ? (d.nickname ?? 'Conectado') : null);
       })
       .catch(() => setMlNickname(null));
+    fetch('/api/group-config')
+      .then(r => r.ok ? r.json() : {})
+      .then((d: { groupLink?: string; groupName?: string }) => {
+        setGroupLink(d.groupLink ?? '');
+        setGroupName(d.groupName ?? '');
+      })
+      .catch(() => {});
   }, [open]);
+
+  const handleSaveGroup = async () => {
+    await fetch('/api/group-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupLink, groupName }),
+    });
+    setGroupSaved(true);
+    setTimeout(() => setGroupSaved(false), 2000);
+  };
 
   const handleSave = () => {
     onSave(local);
@@ -171,6 +191,43 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
                 {`mercadolivre.com.br/p/MLB...?matt_word=${local.mattWord}${local.mattTool ? `&matt_tool=${local.mattTool}` : ''}&forceInApp=true`}
               </div>
             )}
+          </div>
+
+          {/* ── Landing page de captação ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#A0A0A0', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Landing page do grupo
+              </label>
+              <a href="/entrar" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#00D4FF', textDecoration: 'none' }}>
+                <ExternalLink size={11} />
+                Ver página
+              </a>
+            </div>
+            <div style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#666', lineHeight: 1.6 }}>
+              Use <strong style={{ color: '#00D4FF' }}>app-0701c13d2e.happyseeds.space/entrar</strong> nos seus anúncios. Configure abaixo o link e nome do grupo.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#666' }}>Nome do grupo</span>
+              <input type="text" value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                placeholder="Ex: Promoções da Hora 🔥"
+                style={{ ...inputStyle, background: 'transparent', outline: 'none', padding: '10px 12px', borderRadius: 12, fontSize: 14, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#666' }}>Link de convite do grupo (WhatsApp)</span>
+              <input type="text" value={groupLink}
+                onChange={e => setGroupLink(e.target.value.trim())}
+                placeholder="https://chat.whatsapp.com/..."
+                style={{ ...inputStyle, background: 'transparent', outline: 'none', padding: '10px 12px', borderRadius: 12, fontSize: 14, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+            <button
+              onClick={handleSaveGroup}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '10px 0', borderRadius: 999, fontWeight: 600, fontSize: 13, cursor: 'pointer', border: groupSaved ? 'none' : '1px solid rgba(0,212,255,0.2)', background: groupSaved ? '#00FF88' : 'rgba(0,212,255,0.15)', color: groupSaved ? '#000' : '#00D4FF', transition: 'all 0.2s' }}
+            >
+              {groupSaved ? <><CheckCircle size={14} /> Salvo!</> : 'Salvar configurações da página'}
+            </button>
           </div>
 
           <button
