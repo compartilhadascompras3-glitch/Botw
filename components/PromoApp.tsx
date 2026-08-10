@@ -377,7 +377,7 @@ export default function PromoApp() {
           setMlHasMore(false);
         }
       } else {
-        // Sem query: próxima página de todas as categorias em paralelo
+        // Sem query: próxima página em lotes progressivos — aparece rápido
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
         const fetchPg = (qItem: string, pg: number) =>
           fetch(`/api/ml-deals?${new URLSearchParams({
@@ -386,29 +386,45 @@ export default function PromoApp() {
             sort: sortKey,
           })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
 
-        const settled = await Promise.allSettled(shuffled.map(qItem => fetchPg(qItem, nextPage)));
-
-        let addedCount = 0;
-        setMlProducts((prev) => {
-          const ids = new Set(prev.map((p) => p.id));
-          const batches = settled
-            .filter((r): r is PromiseFulfilledResult<{ products: MLProduct[] }> => r.status === 'fulfilled')
-            .map(r => r.value.products ?? []);
-          const newProducts: MLProduct[] = [];
-          const maxLen = Math.max(...batches.map(b => b.length), 0);
+        const mergeMore = (prev: MLProduct[], newBatches: { products: MLProduct[] }[]) => {
+          const ids = new Set(prev.map(p => p.id));
+          const newItems: MLProduct[] = [];
+          const maxLen = Math.max(...newBatches.map(b => b.products.length), 0);
           for (let i = 0; i < maxLen; i++) {
-            for (const batch of batches) {
-              if (i < batch.length && !ids.has(batch[i].id)) {
-                ids.add(batch[i].id);
-                newProducts.push(batch[i]);
+            for (const b of newBatches) {
+              if (i < b.products.length && !ids.has(b.products[i].id)) {
+                ids.add(b.products[i].id);
+                newItems.push(b.products[i]);
               }
             }
           }
-          addedCount = newProducts.length;
-          return [...prev, ...newProducts];
+          return newItems;
+        };
+
+        const BATCH_SIZE = 6;
+        const catBatches = [];
+        for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
+          catBatches.push(shuffled.slice(i, i + BATCH_SIZE));
+        }
+
+        // Primeiro lote: mostra imediatamente e libera o spinner
+        const firstResults = await Promise.all(catBatches[0].map(q => fetchPg(q, nextPage)));
+        setMlProducts(prev => {
+          const newItems = mergeMore(prev, firstResults);
+          return newItems.length > 0 ? [...prev, ...newItems] : prev;
         });
         setMlPage(nextPage);
-        setMlHasMore(addedCount > 0);
+        setMlHasMore(true);
+        setMlLoadingMore(false); // libera spinner já no 1º lote
+
+        // Restante em background
+        for (let b = 1; b < catBatches.length; b++) {
+          const results = await Promise.all(catBatches[b].map(q => fetchPg(q, nextPage)));
+          setMlProducts(prev => {
+            const newItems = mergeMore(prev, results);
+            return newItems.length > 0 ? [...prev, ...newItems] : prev;
+          });
+        }
       }
     } catch {
       setMlHasMore(false);
