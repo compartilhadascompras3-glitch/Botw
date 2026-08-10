@@ -124,48 +124,91 @@ IMPORTANTE SOBRE O JSON DE SAÍDA:
 RESPONDA APENAS com JSON válido sem markdown:
 {"product":"nome","versions":["versão 1 completa","versão 2 completa","versão 3 completa"]}`;
 
+// ── Prompt dedicado para o Groq (texto puro, sem visão) ───────────────────────
+const GROQ_SYSTEM_PROMPT = `Você é especialista em copywriting para grupos de promoções no WhatsApp.
+
+REGRA ABSOLUTA DE FORMATO: Sua resposta deve conter APENAS o JSON solicitado. Nenhuma palavra antes. Nenhuma palavra depois. Nenhuma nota técnica. Nenhuma explicação. Nenhum asterisco. Nenhum markdown.
+
+Você receberá os dados do produto: nome, preço original, preço com desconto, percentual de desconto e link. Use esses dados para criar textos ESPECÍFICOS e CRIATIVOS para esse produto. Não invente dados que não foram fornecidos.
+
+═══════════════════════════════════════
+A ISCA — regra principal
+═══════════════════════════════════════
+A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica e identificável — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
+
+A isca DEVE mencionar algo específico deste produto: o uso, a característica marcante, o preço absurdo, ou a marca quando for reconhecível (Samsung, Apple, Nike, Sony, LG, Xiaomi, Philips, Tramontina, Semp, etc.).
+
+Exemplos bons para "Samsung Galaxy A55 — De R$ 2.199 por R$ 1.299":
+✓ "Galaxy desse preço não faz sentido nenhum"
+✓ "Bateria de dois dias por menos de 1.300?"
+✓ "Tá mais barato que muita coisa bem pior"
+
+Exemplos bons para "Creatina Soldiers Nutrition 1kg — De R$ 89 por R$ 49":
+✓ "1kg de creatina por 49 reais, sério isso?"
+✓ "Quem malha sabe o que essa quantidade representa"
+✓ "Soldiers com esse desconto é pra comprar logo"
+
+Exemplos bons para "Cafeteira Nespresso Essenza Mini — De R$ 599 por R$ 349":
+✓ "Nespresso por 349 é coisa rara de ver"
+✓ "Café de cápsula em casa por esse valor?"
+✓ "Essenza Mini mais barata do que muita panela"
+
+PROIBIDO na isca:
+✗ Frases genéricas que servem para qualquer produto: "Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Achei isso e precisei compartilhar", "Olha essa oferta"
+✗ Palavras: "pessoal", "olha só", "atenção", "aproveite", "corre", "imperdível", "incrível", "oferta", "promoção", "compartilhando", "confira"
+✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
+
+CADA VERSÃO deve ter um ÂNGULO diferente — os 3 ângulos para este produto:
+- Ângulo A: marca ou modelo (só se reconhecível e soar orgânico)
+- Ângulo B: preço ou desconto (usa o número real do produto)
+- Ângulo C: uso prático ou benefício concreto
+
+═══════════════════════════════════════
+ESTRUTURA DE CADA VERSÃO (4 partes)
+═══════════════════════════════════════
+
+PARTE 1 — ISCA
+[frase criativa e específica deste produto, ângulo diferente por versão]
+
+PARTE 2 — PRODUTO E PREÇO (linha em branco após a isca)
+[emoji do produto] [Nome do produto]
+
+💰 De R$ [preço original] por R$ [preço com desconto] no Pix
+💳 Ou [N]x de R$ [valor] sem juros (só se o parcelamento foi fornecido)
+
+PARTE 3 — ESPECIFICAÇÕES (linha em branco após os preços)
+Extraia características do nome do produto. Máximo 4 bullets. Use apenas o que o nome/dados deixam claro — não invente.
+
+• [característica 1]
+• [característica 2]
+• [característica 3]
+
+PARTE 4 — LINK (linha em branco após as specs)
+👉 [link] (só se link foi fornecido; senão omita completamente)
+
+Se houver cupom nos dados, adicione logo após os preços:
+🏷️ Use o cupom *[CUPOM]*
+
+═══════════════════════════════════════
+FORMATO FINAL ESPERADO (use \\n no JSON)
+═══════════════════════════════════════
+[isca]\\n\\n[emoji] [nome]\\n\\n💰 De R$ X por R$ Y no Pix\\n💳 Ou Nx de R$ Z sem juros\\n\\n• spec1\\n• spec2\\n• spec3\\n\\n👉 [link]
+
+REGRAS FINAIS:
+- Texto puro — ZERO asteriscos, ZERO markdown, ZERO negrito (exceto o código do cupom)
+- Emojis APENAS nos lugares indicados (produto, preços, specs não levam emoji)
+- As 3 iscas OBRIGATORIAMENTE diferentes entre si, cada uma com ângulo único
+- O array "versions" deve ter EXATAMENTE 3 strings — uma por versão completa
+
+RESPONDA APENAS com JSON válido sem markdown:
+{"product":"nome do produto","versions":["versão 1 completa","versão 2 completa","versão 3 completa"]}`;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Normaliza espaçamento entre blocos da versão:
- * - isca (1ª linha) → linha em branco → bloco do produto/preço → linha em branco → specs → linha em branco → link
- */
-function normalizeSpacing(text: string): string {
-  const lines = text.split('\n').map(l => l.trimEnd());
-  const out: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const prev = out[out.length - 1] ?? '';
-    const next = lines[i + 1] ?? '';
-
-    // Nunca duas linhas em branco seguidas
-    if (line === '' && prev === '') continue;
-
-    // Garante linha em branco ANTES de linha que começa com emoji de produto/preço/link
-    if (line.match(/^[💰💳•👉🏷️]/u) && prev !== '') {
-      out.push('');
-    }
-
-    // Garante linha em branco DEPOIS da isca (1ª linha não vazia, sem emoji de preço)
-    if (out.filter(l => l !== '').length === 1 && line !== '' && !line.match(/^[💰💳•👉🏷️]/u) && next !== '' && !next.startsWith('•')) {
-      out.push(line);
-      if (next !== '') out.push('');
-      continue;
-    }
-
-    out.push(line);
-
-    // Garante linha em branco DEPOIS do último preço (antes de specs ou link)
-    if (line.match(/^💳|^💰/) && next.startsWith('•')) {
-      out.push('');
-    }
-    // Garante linha em branco DEPOIS da última spec (antes do link)
-    if (line.startsWith('•') && !next.startsWith('•') && next !== '') {
-      out.push('');
-    }
-  }
-
-  return out.join('\n').trim();
+/** Corrige APENAS entradas duplas entre specs (• linhas) — mantém espaçamento original. */
+function fixSpacing(text: string): string {
+  // Remove linha em branco entre itens de spec (linhas que começam com •)
+  return text.replace(/(^• .+)\n\n(?=• )/gm, '$1\n').trim();
 }
 
 /** Extrai o JSON {product, versions} de um texto que a IA retornou (com ou sem cerca ```). */
@@ -188,7 +231,7 @@ function extractResult(rawText: string): PromoResult {
       ? parsed.versions.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, 3)
       : [];
     if (versions.length > 0) {
-      return { product: parsed.product ?? '', versions: versions.map(normalizeSpacing) };
+      return { product: parsed.product ?? '', versions: versions.map(fixSpacing) };
     }
   } catch {
     // JSON malformado (alguns modelos gratuitos escapam aspas incorretamente).
@@ -389,10 +432,10 @@ async function callGroq(imageBase64: string, mimeType: string, linkLine: string)
     temperature: 1.0,
     max_tokens: 2500,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: GROQ_SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. APENAS o JSON, zero texto fora do JSON.${linkLine}`,
+        content: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp usando os dados abaixo. APENAS o JSON, zero texto fora do JSON.\n\n${linkLine.trim()}`,
       },
     ],
   };
