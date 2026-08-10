@@ -44,6 +44,9 @@ export async function GET() {
         hasNeonUrl: !!neonUrl,
         hasDbUrl: !!dbUrl,
         neonUrlPrefix: neonUrl ? neonUrl.substring(0, 30) + '...' : '',
+        hasBtyBase: !!process.env.BTY_LLM_SERVER_BASE_URL,
+        hasBtyKey: !!process.env.BTY_LLM_SERVER_API_KEY,
+        btyBase: process.env.BTY_LLM_SERVER_BASE_URL ? process.env.BTY_LLM_SERVER_BASE_URL.substring(0, 40) + '...' : 'NOT SET',
       },
     },
     { status: 200, headers: corsHeaders }

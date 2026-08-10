@@ -4,17 +4,19 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // ── Provider 1: OpenAI-compatible ───────────────────────────────────────────────
-// Padrão: OpenRouter com modelo GRATUITO com visão (sem custo, precisa só de chave).
-// Também funciona com OpenAI, Groq, Together, LM Studio, Ollama, etc — basta trocar
-// LLM_BASE_URL / LLM_MODEL no .env.
 const LLM_BASE_URL = (process.env.LLM_BASE_URL ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
 const LLM_API_KEY  = process.env.LLM_API_KEY ?? '';
 const LLM_MODEL    = process.env.LLM_MODEL ?? 'google/gemma-4-31b-it:free';
 
-// ── Provider 2: HappySeeds LLM gateway (chat direto, sem limite diário) ───────
+// ── Provider 2: HappySeeds LLM gateway (Claude) ───────────────────────────────
 const BTY_BASE  = (process.env.BTY_LLM_SERVER_BASE_URL ?? '').replace(/\/$/, '');
 const BTY_KEY   = process.env.BTY_LLM_SERVER_API_KEY ?? process.env.HAPPYSEEDS_KEY ?? '';
 const BTY_MODEL = 'claude-sonnet-4.6';
+
+// ── Provider 3: Groq (gratuito, limite generoso, vision via llama) ─────────────
+const GROQ_KEY   = process.env.GROQ_API_KEY ?? '';
+const GROQ_BASE  = 'https://api.groq.com/openai/v1';
+const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'; // suporta visão, grátis
 
 // Mantidos para backward-compat (SSE media — não mais usado para chat)
 const REACTUS_BASE = (process.env.REACTUS_BASE_URL ?? '').replace(/\/$/, '');
@@ -322,7 +324,42 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
   return extractResult(rawText);
 }
 
-// ── Route handler ──────────────────────────────────────────────────────────────
+/** Chama o Groq (llama-4-scout com visão, grátis) */
+async function callGroq(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
+  if (!GROQ_KEY) throw new Error('GROQ_API_KEY não configurado.');
+  const dataUrl = `data:${mimeType};base64,${imageBase64}`;
+  const body = {
+    model: GROQ_MODEL,
+    temperature: 1.0,
+    max_tokens: 2500,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. APENAS o JSON, zero texto fora do JSON.${linkLine}` },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      },
+    ],
+  };
+  const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${GROQ_KEY}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq respondeu ${res.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+  const text = data.choices?.[0]?.message?.content ?? '';
+  if (!text) throw new Error('Groq não retornou conteúdo.');
+  return extractResult(text);
+}
+
+
 
 export async function POST(req: NextRequest) {
   // Providers locais (Ollama / LM Studio em localhost) não exigem chave.
@@ -330,11 +367,11 @@ export async function POST(req: NextRequest) {
   const isLocalProvider = /localhost|127\.0\.0\.1/.test(LLM_BASE_URL);
   const hasOpenAI  = Boolean(LLM_BASE_URL) && (isLocalProvider || Boolean(LLM_API_KEY));
   const hasReactus = Boolean(BTY_BASE && BTY_KEY);
+  const hasGroq    = Boolean(GROQ_KEY);
 
-  if (!hasOpenAI && !hasReactus) {
-    console.error('generate-promo: nenhum provider de IA configurado (defina LLM_BASE_URL e LLM_API_KEY)');
+  if (!hasOpenAI && !hasReactus && !hasGroq) {
     return NextResponse.json(
-      { error: 'IA não configurada. Defina LLM_API_KEY no arquivo .env (crie uma chave grátis em openrouter.ai/keys) e reinicie o servidor.' },
+      { error: 'IA não configurada. Defina LLM_API_KEY ou GROQ_API_KEY no .env.' },
       { status: 500 },
     );
   }
@@ -370,19 +407,34 @@ export async function POST(req: NextRequest) {
 
     const linkLine = productContext ? `\n\n${productContext}` : '';
 
-    // Prioriza Reactus (Claude) quando disponível — mais confiável que modelos grátis OpenRouter.
-    // Usa OpenAI-compatível como fallback quando Reactus não está disponível.
+    // Ordem: BTY/Claude → Groq (grátis, vision) → OpenRouter (grátis)
     let result: PromoResult;
     if (hasReactus) {
       try {
         result = await callReactus(cleanB64, mimeType, linkLine);
       } catch (err) {
-        if (hasOpenAI) {
-          console.warn('generate-promo: Reactus falhou, tentando OpenAI-compatível:', String(err).slice(0, 200));
+        console.warn('generate-promo: BTY falhou, tentando Groq:', String(err).slice(0, 150));
+        if (hasGroq) {
+          try {
+            result = await callGroq(cleanB64, mimeType, linkLine);
+          } catch (err2) {
+            console.warn('generate-promo: Groq falhou, tentando OpenRouter:', String(err2).slice(0, 150));
+            if (hasOpenAI) {
+              result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
+            } else { throw err2; }
+          }
+        } else if (hasOpenAI) {
           result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
-        } else {
-          throw err;
-        }
+        } else { throw err; }
+      }
+    } else if (hasGroq) {
+      try {
+        result = await callGroq(cleanB64, mimeType, linkLine);
+      } catch (err) {
+        console.warn('generate-promo: Groq falhou, tentando OpenRouter:', String(err).slice(0, 150));
+        if (hasOpenAI) {
+          result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
+        } else { throw err; }
       }
     } else {
       result = await callOpenAICompatible(cleanB64, mimeType, linkLine);
