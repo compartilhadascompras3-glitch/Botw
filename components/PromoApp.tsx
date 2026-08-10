@@ -291,8 +291,15 @@ export default function PromoApp() {
       } else {
         // Sem query: carrega em lotes progressivos para aparecer rápido
         // Lote 1 (6 categorias) → mostra imediatamente
-        // Lote 2 e 3 em background → vai adicionando sem travar a tela
+        // Lote 2+ em background → vai adicionando sem travar a tela
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
+
+        // Busca ML Promobit em paralelo com o primeiro lote
+        const promobitPromise = fetch(`/api/ml-promobit?${new URLSearchParams({
+          minDiscount: discount.toString(),
+          mattWord: settings.mattWord,
+          limit: '100',
+        })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
 
         const fetchCat = (qItem: string, pg: number) =>
           fetch(`/api/ml-deals?${new URLSearchParams({
@@ -338,6 +345,25 @@ export default function PromoApp() {
           setMlProducts(prev => {
             const newItems = mergeInto(prev, results);
             return newItems.length > 0 ? [...prev, ...newItems] : prev;
+          });
+        }
+
+        // Injeta Promobit ML após todos os lotes (mistura distribuída)
+        const promobitData = await promobitPromise;
+        const promobitItems = promobitData.products ?? [];
+        if (promobitItems.length > 0) {
+          setMlProducts(prev => {
+            const ids = new Set(prev.map(p => p.id));
+            const newOnes = promobitItems.filter(p => !ids.has(p.id));
+            if (newOnes.length === 0) return prev;
+            // Intercala: 1 Promobit a cada 4 ML para misturar
+            const result = [...prev];
+            let pbIdx = 0;
+            for (let i = 4; i < result.length && pbIdx < newOnes.length; i += 5) {
+              result.splice(i, 0, newOnes[pbIdx++]);
+            }
+            // Restantes no final
+            return [...result, ...newOnes.slice(pbIdx)];
           });
         }
 

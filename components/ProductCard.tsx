@@ -44,6 +44,7 @@ export function ProductCard({ product, accentColor = '#00D4FF', accentGrad, alre
   const [opening, setOpening] = useState(false);
   const grad = accentGrad ?? 'linear-gradient(135deg, #00D4FF 0%, #00FF88 100%)';
   const amz = isAmazon(product);
+  const isMlPromobit = (product as MLProduct).source === 'ml_promobit';
   const isPromobit = amz || isShopee(product);
 
   const handleCopy = async () => {
@@ -101,6 +102,14 @@ export function ProductCard({ product, accentColor = '#00D4FF', accentGrad, alre
         <div className="absolute top-3 right-3 z-10">
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,153,0,0.15)', color: '#FF9900', border: '1px solid rgba(255,153,0,0.3)' }}>
             AMZ
+          </span>
+        </div>
+      )}
+
+      {isMlPromobit && !alreadyAdded && (
+        <div className="absolute top-3 right-3 z-10">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,212,255,0.12)', color: '#00D4FF', border: '1px solid rgba(0,212,255,0.25)' }}>
+            via Promobit
           </span>
         </div>
       )}
