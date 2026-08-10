@@ -9,7 +9,12 @@ const LLM_API_KEY  = process.env.LLM_API_KEY ?? '';
 const LLM_MODEL    = process.env.LLM_MODEL ?? 'google/gemma-4-31b-it:free';
 
 // ── Provider 2: HappySeeds LLM gateway (Claude) ───────────────────────────────
-const BTY_BASE  = (process.env.BTY_LLM_SERVER_BASE_URL ?? '').replace(/\/$/, '');
+// BTY_LLM_SERVER_BASE_URL é injetado no sandbox HappySeeds.
+// No app publicado esse var não chega — usa aigw-api.happyseeds.ai diretamente.
+const BTY_BASE  = (
+  process.env.BTY_LLM_SERVER_BASE_URL ||
+  'https://aigw-api.happyseeds.ai/v1'
+).replace(/\/$/, '');
 const BTY_KEY   = process.env.BTY_LLM_SERVER_API_KEY ?? process.env.HAPPYSEEDS_KEY ?? '';
 const BTY_MODEL = 'claude-sonnet-4.6';
 
