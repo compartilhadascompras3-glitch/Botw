@@ -289,7 +289,7 @@ export default function PromoApp() {
           if ((data.products || []).length === 0) setMlError('Nenhuma promoção encontrada. Tente outra busca ou reduza o desconto mínimo.');
         }
       } else {
-        // Sem query: busca todas as categorias, 2 páginas cada, em paralelo
+        // Sem query: busca todas as categorias, página 1, em paralelo — rápido
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
         const fetchPage = (qItem: string, pg: number) =>
           fetch(`/api/ml-deals?${new URLSearchParams({
@@ -298,9 +298,7 @@ export default function PromoApp() {
             sort: sort ?? 'default',
           })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
 
-        // Página 1 e 2 de cada categoria ao mesmo tempo
-        const allFetches = shuffled.flatMap(qItem => [fetchPage(qItem, 1), fetchPage(qItem, 2)]);
-        const settled = await Promise.allSettled(allFetches);
+        const settled = await Promise.allSettled(shuffled.map(qItem => fetchPage(qItem, 1)));
 
         const seen = new Set<string>();
         const merged: MLProduct[] = [];
@@ -321,8 +319,8 @@ export default function PromoApp() {
           setMlError('Nenhuma promoção encontrada. Tente reduzir o desconto mínimo.');
         } else {
           setMlProducts(merged);
-          setMlHasMore(true); // sempre tem mais — carrega página 3+ ao clicar
-          setMlPage(2); // já carregamos páginas 1 e 2
+          setMlHasMore(true);
+          setMlPage(1);
         }
       }
     } catch {
@@ -357,9 +355,7 @@ export default function PromoApp() {
           setMlHasMore(false);
         }
       } else {
-        // Sem query: busca página seguinte de todas as categorias
-        // nextPage começa em 2 (já carregamos 1+2 no load inicial), então aqui vira 3, 4...
-        // Mas o mlPage foi setado para 2 no load inicial, então nextPage = 3 na 1ª rodada
+        // Sem query: próxima página de todas as categorias em paralelo
         const shuffled = [...ML_DEFAULT_QUERIES].sort(() => Math.random() - 0.5);
         const fetchPg = (qItem: string, pg: number) =>
           fetch(`/api/ml-deals?${new URLSearchParams({
@@ -368,9 +364,9 @@ export default function PromoApp() {
             sort: sortKey,
           })}`).then(r => r.json() as Promise<{ products: MLProduct[] }>).catch(() => ({ products: [] }));
 
-        const allFetches = shuffled.flatMap(qItem => [fetchPg(qItem, nextPage), fetchPg(qItem, nextPage + 1)]);
-        const settled = await Promise.allSettled(allFetches);
+        const settled = await Promise.allSettled(shuffled.map(qItem => fetchPg(qItem, nextPage)));
 
+        let addedCount = 0;
         setMlProducts((prev) => {
           const ids = new Set(prev.map((p) => p.id));
           const batches = settled
@@ -386,10 +382,11 @@ export default function PromoApp() {
               }
             }
           }
+          addedCount = newProducts.length;
           return [...prev, ...newProducts];
         });
-        setMlPage(nextPage + 1);
-        setMlHasMore(true); // sem limite — o botão sempre aparece
+        setMlPage(nextPage);
+        setMlHasMore(addedCount > 0);
       }
     } catch {
       setMlHasMore(false);
