@@ -28,9 +28,7 @@ export async function GET(req: NextRequest) {
       return true;
     });
 
-    // Ordena por desconto decrescente
-    filtered.sort((a, b) => b.offer_discont_percentage - a.offer_discont_percentage);
-
+    // Mantém a ordem da Promobit (mais recentes primeiro — sort=latest)
     const sliced = filtered.slice(0, limit);
 
     const base: MLProduct[] = sliced.map(o => ({
