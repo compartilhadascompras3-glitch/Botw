@@ -31,6 +31,20 @@ function extractMLId(url: string): string | null {
   return null;
 }
 
+/** Extrai título legível do slug da URL do ML (ex: "notebook-samsung-galaxy-book4" → "Notebook Samsung Galaxy Book4") */
+function titleFromMLSlug(url: string): string {
+  try {
+    const u = new URL(url);
+    // Pega o primeiro segmento do pathname que pareça um slug de produto
+    const seg = u.pathname.split('/').find(s => s.length > 5 && /[a-z]/.test(s) && !/^p$|^MLB/i.test(s));
+    if (!seg) return '';
+    return seg
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+      .trim();
+  } catch { return ''; }
+}
+
 async function fetchML(url: string): Promise<FetchedProduct | null> {
   // Tenta extrair ID direto da URL
   let itemId = extractMLId(url);
@@ -41,18 +55,22 @@ async function fetchML(url: string): Promise<FetchedProduct | null> {
       const res = await fetch(url, { method: 'GET', headers: HEADERS, redirect: 'follow', signal: AbortSignal.timeout(10000) });
       itemId = extractMLId(res.url);
       if (!itemId) {
-        // Tenta pegar do HTML
         const html = await res.text();
         const match = html.match(/MLB[-_]?(\d+)/i);
         if (match) itemId = `MLB${match[1]}`;
       }
-    } catch { return null; }
+    } catch { /* ignora */ }
   }
 
-  if (!itemId) return null;
+  if (!itemId) {
+    // Sem ID: retorna produto genérico com título do slug e preço=0 para edição manual
+    const title = titleFromMLSlug(url);
+    if (!title) return null;
+    return { id: `ml_manual_${Date.now()}`, title, price: 0, original_price: null, discount_percent: 0, thumbnail: '', permalink: url, source: 'ml', seller_name: 'Mercado Livre' };
+  }
 
+  // Tenta a API do ML (pode retornar 403 sem app aprovado)
   try {
-    // Busca dados do item e preços em paralelo
     const [itemRes, pricesRes] = await Promise.all([
       fetch(`https://api.mercadolibre.com/items/${itemId}`, {
         headers: { 'Accept': 'application/json' },
@@ -64,42 +82,57 @@ async function fetchML(url: string): Promise<FetchedProduct | null> {
       }).catch(() => null),
     ]);
 
-    if (!itemRes.ok) return null;
-    const item = await itemRes.json() as {
-      id: string; title: string; price: number; original_price?: number | null;
-      thumbnail: string; permalink: string;
-      seller?: { nickname?: string };
-    };
-
-    // Tenta extrair preço original do endpoint /prices
-    let originalFromPrices: number | null = null;
-    if (pricesRes?.ok) {
-      const pricesData = await pricesRes.json() as {
-        prices?: { type: string; amount: number; regular_amount?: number | null }[]
+    if (itemRes.ok) {
+      const item = await itemRes.json() as {
+        id: string; title: string; price: number; original_price?: number | null;
+        thumbnail: string; permalink: string;
+        seller?: { nickname?: string };
       };
-      const mainPrice = (pricesData.prices ?? []).find(p => p.type === 'standard');
-      if (mainPrice?.regular_amount && mainPrice.regular_amount > mainPrice.amount) {
-        originalFromPrices = mainPrice.regular_amount;
+
+      let originalFromPrices: number | null = null;
+      if (pricesRes?.ok) {
+        const pricesData = await pricesRes.json() as {
+          prices?: { type: string; amount: number; regular_amount?: number | null }[]
+        };
+        const mainPrice = (pricesData.prices ?? []).find(p => p.type === 'standard');
+        if (mainPrice?.regular_amount && mainPrice.regular_amount > mainPrice.amount) {
+          originalFromPrices = mainPrice.regular_amount;
+        }
       }
+
+      const original = item.original_price ?? originalFromPrices ?? null;
+      const discount = original && original > item.price
+        ? Math.round((1 - item.price / original) * 100)
+        : 0;
+
+      return {
+        id: item.id,
+        title: item.title,
+        price: item.price,
+        original_price: original,
+        discount_percent: discount,
+        thumbnail: (item.thumbnail ?? '').replace('-I.jpg', '-O.jpg'),
+        permalink: item.permalink ?? url,
+        source: 'ml',
+        seller_name: item.seller?.nickname ?? 'Mercado Livre',
+      };
     }
+  } catch { /* ignora */ }
 
-    const original = item.original_price ?? originalFromPrices ?? null;
-    const discount = original && original > item.price
-      ? Math.round((1 - item.price / original) * 100)
-      : 0;
-
-    return {
-      id: item.id,
-      title: item.title,
-      price: item.price,
-      original_price: original,
-      discount_percent: discount,
-      thumbnail: (item.thumbnail ?? '').replace('-I.jpg', '-O.jpg'), // imagem maior
-      permalink: item.permalink ?? url,
-      source: 'ml',
-      seller_name: item.seller?.nickname ?? 'Mercado Livre',
-    };
-  } catch { return null; }
+  // API falhou (403 sem app aprovado) — retorna com ID mas preço=0 para edição manual
+  const slugTitle = titleFromMLSlug(url);
+  const fallbackTitle = slugTitle || itemId;
+  return {
+    id: itemId,
+    title: fallbackTitle,
+    price: 0,
+    original_price: null,
+    discount_percent: 0,
+    thumbnail: '',
+    permalink: url,
+    source: 'ml',
+    seller_name: 'Mercado Livre',
+  };
 }
 
 // ── Amazon ────────────────────────────────────────────────────────────────────
