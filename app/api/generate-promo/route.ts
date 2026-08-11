@@ -86,16 +86,10 @@ PARTE 1 — ISCA
 PARTE 2 — PRODUTO E PREÇO
 [emoji do produto] [Nome do produto]
 
-💰 De R$ [preço original] por R$ [preço Pix] no Pix
+💰 De R$ [preço original] por R$ [preço com desconto]
 💳 Ou [N]x de R$ [valor parcela] sem juros (SOMENTE se parcelamento visível)
 
-PARTE 3 — ESPECIFICAÇÕES
-• [spec 1 visível na imagem]
-• [spec 2 visível]
-• [spec 3 visível]
-(máximo 4 bullets, use • como marcador, não invente specs ausentes)
-
-PARTE 4 — LINK
+PARTE 3 — LINK
 👉 [link] (SOMENTE se link fornecido; senão omita esta parte inteira)
 
 ═══════════════════════════════════════
@@ -105,12 +99,8 @@ FORMATO FINAL
 
 [emoji] [nome do produto]
 
-💰 De R$ X por R$ Y no Pix
+💰 De R$ X por R$ Y
 💳 Ou Nx de R$ Z sem juros
-
-• spec 1
-• spec 2
-• spec 3
 
 👉 [link]
 
@@ -118,7 +108,8 @@ REGRAS FINAIS:
 - Texto puro — ZERO asteriscos, ZERO markdown, ZERO negrito
 - Emojis APENAS nos lugares indicados acima
 - As 3 iscas OBRIGATORIAMENTE de ângulos diferentes: preço, uso prático, marca/contexto
-- Specs apenas do que estiver visível na imagem
+- NÃO incluir nenhuma lista de características ou especificações
+- NÃO escrever "no Pix" em nenhuma parte do texto
 
 IMPORTANTE SOBRE O JSON DE SAÍDA:
 - Cada item do array "versions" é UMA STRING ÚNICA contendo o texto INTEIRO da versão (isca + preço + specs + link, tudo junto, separado por \\n dentro da mesma string).
@@ -173,31 +164,26 @@ PARTE 1 — ISCA
 PARTE 2 — PRODUTO E PREÇO (linha em branco após a isca)
 [emoji do produto] [Nome do produto]
 
-💰 De R$ [preço original] por R$ [preço com desconto] no Pix
+💰 De R$ [preço original] por R$ [preço com desconto]
 💳 Ou [N]x de R$ [valor] sem juros (só se o parcelamento foi fornecido)
-
-PARTE 3 — ESPECIFICAÇÕES (linha em branco após os preços)
-Extraia características do nome do produto. Máximo 4 bullets. Use apenas o que o nome/dados deixam claro — não invente.
-
-• [característica 1]
-• [característica 2]
-• [característica 3]
-
-PARTE 4 — LINK (linha em branco após as specs)
-👉 [link] (só se link foi fornecido; senão omita completamente)
 
 Se houver cupom nos dados, adicione logo após os preços:
 🏷️ Use o cupom *[CUPOM]*
 
+PARTE 3 — LINK (linha em branco após os preços)
+👉 [link] (só se link foi fornecido; senão omita completamente)
+
 ═══════════════════════════════════════
 FORMATO FINAL ESPERADO (use \\n no JSON)
 ═══════════════════════════════════════
-[isca]\\n\\n[emoji] [nome]\\n\\n💰 De R$ X por R$ Y no Pix\\n💳 Ou Nx de R$ Z sem juros\\n\\n• spec1\\n• spec2\\n• spec3\\n\\n👉 [link]
+[isca]\\n\\n[emoji] [nome]\\n\\n💰 De R$ X por R$ Y\\n💳 Ou Nx de R$ Z sem juros\\n\\n👉 [link]
 
 REGRAS FINAIS:
 - Texto puro — ZERO asteriscos, ZERO markdown, ZERO negrito (exceto o código do cupom)
-- Emojis APENAS nos lugares indicados (specs não levam emoji)
+- Emojis APENAS nos lugares indicados
 - As 3 iscas OBRIGATORIAMENTE de ângulos diferentes: preço, uso prático, marca/contexto
+- NÃO incluir nenhuma lista de características ou especificações
+- NÃO escrever "no Pix" em nenhuma parte do texto
 - O array "versions" deve ter EXATAMENTE 3 strings — uma por versão completa
 
 RESPONDA APENAS com JSON válido sem markdown:
@@ -205,10 +191,15 @@ RESPONDA APENAS com JSON válido sem markdown:
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Corrige APENAS entradas duplas entre specs (• linhas) — mantém espaçamento original. */
+/** Corrige formatação: remove specs (• linhas), "no Pix" e espaçamento excessivo. */
 function fixSpacing(text: string): string {
-  // Remove linha em branco entre itens de spec (linhas que começam com •)
-  return text.replace(/(^• .+)\n\n(?=• )/gm, '$1\n').trim();
+  return text
+    .split('\n')
+    .filter(line => !line.trim().startsWith('•'))   // remove specs se a IA insistir
+    .join('\n')
+    .replace(/ no [Pp]ix/g, '')                      // remove "no Pix" onde aparecer
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Extrai o JSON {product, versions} de um texto que a IA retornou (com ou sem cerca ```). */
