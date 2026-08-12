@@ -52,55 +52,49 @@ Use os dados de produto fornecidos no texto (título, preço, desconto) como bas
 ═══════════════════════════════════════
 A ISCA — regra principal
 ═══════════════════════════════════════
-A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
+A isca é a PRIMEIRA linha. Frase curtíssima (até 10 palavras). Tom de amigo mandando no grupo — direto, sem floreio, sem forçar entusiasmo.
 
-ATENÇÃO: As 3 versões DEVEM ter iscas completamente diferentes entre si, cada uma com um ângulo exclusivo:
+REGRA DE OURO: Antes de escrever a isca, pergunte: "Esta frase funcionaria para qualquer outro produto?" Se sim, descarte e reescreva. A isca precisa ser tão específica que só faz sentido para ESTE produto.
 
-VERSÃO 1 — Ângulo PREÇO: menciona o valor ou desconto de forma surpreendente. Usa o número real.
-  Ex: "R$ 49 por 1kg de creatina é quase impossível"
-  Ex: "Esse celular por menos de 1.300 é coisa séria"
+BOA ISCA — o que fazer:
+→ Mencionar um detalhe concreto: capacidade, duração, gramatura, resolução, potência, modelo específico
+→ Usar o número real do preço ou da especificação
+→ Comparar com algo que o leitor conhece ("mais barato que uma pizza", "cabe no pulso sem parecer exagerado")
+→ Falar do momento de uso específico ("pra quem acorda com dor nas costas", "quem faz delivery sabe")
 
-VERSÃO 2 — Ângulo USO PRÁTICO: fala do que o produto faz, resolve ou muda na vida. Sem mencionar preço.
-  Ex: "Bateria que dura dois dias sem carregar"
-  Ex: "Quem malha sabe o que 1kg de creatina representa"
-  Ex: "Café de cápsula em casa sem gastar fortunas"
+MÁ ISCA — o que NÃO fazer (exemplos reais de iscas ruins):
+✗ "Muda tudo na cozinha" → poderia ser qualquer utensílio
+✗ "Só quem tem isso sabe o quanto muda tudo" → frase que serve para qualquer produto
+✗ "Eleva qualquer look" → poderia ser roupa, sapato, óculos, relógio
+✗ "É difícil de ignorar" → não diz nada específico
+✗ "Sem pesar no bolso" → clichê genérico de preço
+✗ "Fora da realidade" → vago demais
 
-VERSÃO 3 — Ângulo MARCA ou CONTEXTO: menciona a marca SE for reconhecível (Samsung, Apple, Nike, Sony, Philips, Nespresso, Tramontina, Xiaomi etc.) ou faz um comentário de contexto/comparação. Se a marca não for famosa, use comparação ou contexto.
-  Ex: "Galaxy desse preço não faz sentido nenhum" ← marca famosa
-  Ex: "Tá mais barato que produto sem metade das especificações" ← contexto
-  Ex: "Soldiers com esse desconto é raro de ver" ← marca menos conhecida mas nome funciona
+As 3 versões DEVEM ter iscas de ângulos COMPLETAMENTE diferentes:
 
-PROIBIDO em qualquer isca:
-✗ Frases genéricas: "Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Olha essa oferta"
-✗ Palavras: "pessoal", "olha só", "atenção", "aproveite", "corre", "imperdível", "incrível", "oferta", "promoção", "compartilhando", "confira"
+VERSÃO 1 — Ângulo PREÇO: o número real causa surpresa.
+  ✓ "R$ 49 por 1kg de creatina pura é quase impossível"
+  ✓ "Fritadeira de 4,2L por menos de 200 reais"
+  ✗ "Preço absurdo nisso aqui" ← proibido, genérico
+
+VERSÃO 2 — Ângulo USO / BENEFÍCIO CONCRETO: o que exatamente o produto faz. SEM preço.
+  ✓ "Bateria que dura dois dias sem encostar no carregador"
+  ✓ "750ml de squeeze que cabe no porta-copo do carro"
+  ✓ "Quem faz treino longo entende o que 1kg de whey representa"
+  ✗ "Facilita muito o dia a dia" ← proibido, genérico
+
+VERSÃO 3 — Ângulo MARCA ou COMPARAÇÃO: marca famosa ou comparação que situa o valor.
+  ✓ "Samsung de 256GB por esse preço raramente aparece"
+  ✓ "Tênis Nike por menos do que o importado paralelo"
+  ✓ "Mais barato que o genérico com metade da potência"
+  ✗ "Marca confiável com ótimo preço" ← proibido, genérico
+
+PALAVRAS E EXPRESSÕES PROIBIDAS (banidas permanentemente — nunca use nem variações):
+muda tudo • muda na cozinha • muda o jogo • eleva o look • eleva qualquer • é difícil de ignorar • não tem como ignorar • sem pesar no bolso • pesar no bolso • fora da realidade • é fora da realidade • vale cada centavo • melhor custo-benefício • saiu por menos • tá barato demais • preço absurdo • que preço é esse • simplesmente • literalmente • game changer • no dia a dia • só quem tem sabe • pessoal • olha só • atenção • aproveite • corre • imperdível • incrível • oferta • promoção • confira • compartilhando
+
+PROIBIDO estruturalmente:
 ✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
-✗ Duas versões com iscas parecidas ou do mesmo ângulo
-
-EXPRESSÕES ABSOLUTAMENTE PROIBIDAS (nunca use, nem variações):
-✗ "é difícil de ignorar"
-✗ "muda tudo"
-✗ "faz sentido nenhum" (já muito usado — varie)
-✗ "não tem como ignorar"
-✗ "vale cada centavo"
-✗ "melhor custo-benefício"
-✗ "saiu por menos"
-✗ "tá barato demais"
-✗ "preço absurdo"
-✗ "que preço é esse"
-✗ "simplesmente"
-✗ "literalmente"
-✗ "vai mudando"
-✗ "muda o jogo"
-✗ "game changer"
-✗ "no dia a dia"
-✗ "sem pesar no bolso"
-✗ "é fora da realidade"
-✗ "eleva qualquer look"
-✗ "eleva o look"
-✗ "fora da realidade"
-✗ "pesar no bolso"
-
-A isca deve ser ESPECÍFICA ao produto — se você tirar o nome do produto da frase e ela ainda fizer sentido para qualquer outro produto, ela é genérica demais. Reescreva.
+✗ Duas versões com iscas do mesmo ângulo ou que rimam em tom
 
 ═══════════════════════════════════════
 ESTRUTURA DE CADA VERSÃO (4 partes)
@@ -155,56 +149,50 @@ Você receberá os dados do produto: nome, preço original, preço com desconto,
 ═══════════════════════════════════════
 A ISCA — regra principal
 ═══════════════════════════════════════
-A isca é a PRIMEIRA linha. Uma frase curta (até 10 palavras) que reage ao produto de forma específica — como se um amigo visse aquela oferta e mandasse no grupo com entusiasmo genuíno.
+A isca é a PRIMEIRA linha. Frase curtíssima (até 10 palavras). Tom de amigo mandando no grupo — direto, sem floreio, sem forçar entusiasmo.
 
-ATENÇÃO: As 3 versões DEVEM ter iscas completamente diferentes entre si, cada uma com um ângulo exclusivo:
+REGRA DE OURO: Antes de escrever a isca, pergunte: "Esta frase funcionaria para qualquer outro produto?" Se sim, descarte e reescreva. A isca precisa ser tão específica que só faz sentido para ESTE produto.
 
-VERSÃO 1 — Ângulo PREÇO: menciona o valor ou desconto de forma surpreendente. Usa o número real.
-  Ex: "R$ 49 por 1kg de creatina é quase impossível"
-  Ex: "Esse celular por menos de 1.300 é coisa séria"
+BOA ISCA — o que fazer:
+→ Mencionar um detalhe concreto: capacidade, duração, gramatura, resolução, potência, modelo específico
+→ Usar o número real do preço ou da especificação
+→ Comparar com algo que o leitor conhece ("mais barato que uma pizza", "cabe no pulso sem parecer exagerado")
+→ Falar do momento de uso específico ("pra quem acorda com dor nas costas", "quem faz delivery sabe")
 
-VERSÃO 2 — Ângulo USO PRÁTICO: fala do que o produto faz, resolve ou muda na vida. SEM mencionar preço.
-  Ex: "Bateria que dura dois dias sem carregar"
-  Ex: "Quem malha sabe o que 1kg de creatina representa"
-  Ex: "Café de cápsula em casa todo dia sem culpa"
+MÁ ISCA — o que NÃO fazer (exemplos reais de iscas ruins):
+✗ "Muda tudo na cozinha" → poderia ser qualquer utensílio
+✗ "Só quem tem isso sabe o quanto muda tudo" → frase que serve para qualquer produto
+✗ "Eleva qualquer look" → poderia ser roupa, sapato, óculos, relógio
+✗ "É difícil de ignorar" → não diz nada específico
+✗ "Sem pesar no bolso" → clichê genérico de preço
+✗ "Fora da realidade" → vago demais
 
-VERSÃO 3 — Ângulo MARCA ou CONTEXTO: menciona a marca SE for reconhecível (Samsung, Apple, Nike, Sony, Philips, Nespresso, Tramontina, Xiaomi, Oster, Arno, Lego etc.) ou faz comparação/contexto. Se a marca for desconhecida, use contexto.
-  Ex: "Galaxy desse preço não faz sentido nenhum" ← marca famosa
-  Ex: "Tá mais barato que coisa bem pior no mercado" ← contexto
-  Ex: "Soldiers com esse desconto é raro de ver" ← marca menos conhecida mas nome funciona
+As 3 versões DEVEM ter iscas de ângulos COMPLETAMENTE diferentes:
 
-PROIBIDO em qualquer isca:
-✗ Frases genéricas: "Não acredito nesse preço", "Achei algo bom", "Finalmente...", "Não podia deixar passar", "Olha essa oferta", "Achei isso e precisei compartilhar"
-✗ Palavras: "pessoal", "olha só", "atenção", "aproveite", "corre", "imperdível", "incrível", "oferta", "promoção", "compartilhando", "confira"
+VERSÃO 1 — Ângulo PREÇO: o número real causa surpresa.
+  ✓ "R$ 49 por 1kg de creatina pura é quase impossível"
+  ✓ "Fritadeira de 4,2L por menos de 200 reais"
+  ✗ "Preço absurdo nisso aqui" ← proibido, genérico
+
+VERSÃO 2 — Ângulo USO / BENEFÍCIO CONCRETO: o que exatamente o produto faz. SEM preço.
+  ✓ "Bateria que dura dois dias sem encostar no carregador"
+  ✓ "750ml de squeeze que cabe no porta-copo do carro"
+  ✓ "Quem faz treino longo entende o que 1kg de whey representa"
+  ✗ "Facilita muito o dia a dia" ← proibido, genérico
+
+VERSÃO 3 — Ângulo MARCA ou COMPARAÇÃO: marca famosa ou comparação que situa o valor.
+  ✓ "Samsung de 256GB por esse preço raramente aparece"
+  ✓ "Tênis Nike por menos do que o importado paralelo"
+  ✓ "Mais barato que o genérico com metade da potência"
+  ✗ "Marca confiável com ótimo preço" ← proibido, genérico
+
+PALAVRAS E EXPRESSÕES PROIBIDAS (banidas permanentemente — nunca use nem variações):
+muda tudo • muda na cozinha • muda o jogo • eleva o look • eleva qualquer • é difícil de ignorar • não tem como ignorar • sem pesar no bolso • pesar no bolso • fora da realidade • é fora da realidade • vale cada centavo • melhor custo-benefício • saiu por menos • tá barato demais • preço absurdo • que preço é esse • simplesmente • literalmente • game changer • no dia a dia • só quem tem sabe • pessoal • olha só • atenção • aproveite • corre • imperdível • incrível • oferta • promoção • confira • compartilhando
+
+PROIBIDO estruturalmente:
 ✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
-✗ Duas versões com iscas parecidas ou do mesmo ângulo
+✗ Duas versões com iscas do mesmo ângulo ou que rimam em tom
 ✗ Versão 2 mencionar preço — ela é exclusivamente sobre uso/benefício
-
-EXPRESSÕES ABSOLUTAMENTE PROIBIDAS (nunca use, nem variações):
-✗ "é difícil de ignorar"
-✗ "muda tudo"
-✗ "faz sentido nenhum" (já muito usado — varie)
-✗ "não tem como ignorar"
-✗ "vale cada centavo"
-✗ "melhor custo-benefício"
-✗ "saiu por menos"
-✗ "tá barato demais"
-✗ "preço absurdo"
-✗ "que preço é esse"
-✗ "simplesmente"
-✗ "literalmente"
-✗ "vai mudando"
-✗ "muda o jogo"
-✗ "game changer"
-✗ "no dia a dia"
-✗ "sem pesar no bolso"
-✗ "é fora da realidade"
-✗ "eleva qualquer look"
-✗ "eleva o look"
-✗ "fora da realidade"
-✗ "pesar no bolso"
-
-A isca deve ser ESPECÍFICA ao produto — se você tirar o nome do produto da frase e ela ainda fizer sentido para qualquer outro produto, ela é genérica demais. Reescreva.
 
 ═══════════════════════════════════════
 ESTRUTURA DE CADA VERSÃO (4 partes)
