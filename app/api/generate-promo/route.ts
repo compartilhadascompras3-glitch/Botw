@@ -76,6 +76,26 @@ PROIBIDO em qualquer isca:
 ✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
 ✗ Duas versões com iscas parecidas ou do mesmo ângulo
 
+EXPRESSÕES ABSOLUTAMENTE PROIBIDAS (nunca use, nem variações):
+✗ "é difícil de ignorar"
+✗ "muda tudo"
+✗ "faz sentido nenhum" (já muito usado — varie)
+✗ "não tem como ignorar"
+✗ "vale cada centavo"
+✗ "melhor custo-benefício"
+✗ "saiu por menos"
+✗ "tá barato demais"
+✗ "preço absurdo"
+✗ "que preço é esse"
+✗ "simplesmente"
+✗ "literalmente"
+✗ "vai mudando"
+✗ "muda o jogo"
+✗ "game changer"
+✗ "no dia a dia"
+
+A isca deve ser ESPECÍFICA ao produto — se você tirar o nome do produto da frase e ela ainda fizer sentido para qualquer outro produto, ela é genérica demais. Reescreva.
+
 ═══════════════════════════════════════
 ESTRUTURA DE CADA VERSÃO (4 partes)
 ═══════════════════════════════════════
@@ -153,6 +173,26 @@ PROIBIDO em qualquer isca:
 ✗ Começar com "Esse/Esta/Aqui/Você/Eu/A gente"
 ✗ Duas versões com iscas parecidas ou do mesmo ângulo
 ✗ Versão 2 mencionar preço — ela é exclusivamente sobre uso/benefício
+
+EXPRESSÕES ABSOLUTAMENTE PROIBIDAS (nunca use, nem variações):
+✗ "é difícil de ignorar"
+✗ "muda tudo"
+✗ "faz sentido nenhum" (já muito usado — varie)
+✗ "não tem como ignorar"
+✗ "vale cada centavo"
+✗ "melhor custo-benefício"
+✗ "saiu por menos"
+✗ "tá barato demais"
+✗ "preço absurdo"
+✗ "que preço é esse"
+✗ "simplesmente"
+✗ "literalmente"
+✗ "vai mudando"
+✗ "muda o jogo"
+✗ "game changer"
+✗ "no dia a dia"
+
+A isca deve ser ESPECÍFICA ao produto — se você tirar o nome do produto da frase e ela ainda fizer sentido para qualquer outro produto, ela é genérica demais. Reescreva.
 
 ═══════════════════════════════════════
 ESTRUTURA DE CADA VERSÃO (4 partes)
