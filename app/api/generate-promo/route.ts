@@ -93,6 +93,12 @@ EXPRESSÕES ABSOLUTAMENTE PROIBIDAS (nunca use, nem variações):
 ✗ "muda o jogo"
 ✗ "game changer"
 ✗ "no dia a dia"
+✗ "sem pesar no bolso"
+✗ "é fora da realidade"
+✗ "eleva qualquer look"
+✗ "eleva o look"
+✗ "fora da realidade"
+✗ "pesar no bolso"
 
 A isca deve ser ESPECÍFICA ao produto — se você tirar o nome do produto da frase e ela ainda fizer sentido para qualquer outro produto, ela é genérica demais. Reescreva.
 
@@ -191,6 +197,12 @@ EXPRESSÕES ABSOLUTAMENTE PROIBIDAS (nunca use, nem variações):
 ✗ "muda o jogo"
 ✗ "game changer"
 ✗ "no dia a dia"
+✗ "sem pesar no bolso"
+✗ "é fora da realidade"
+✗ "eleva qualquer look"
+✗ "eleva o look"
+✗ "fora da realidade"
+✗ "pesar no bolso"
 
 A isca deve ser ESPECÍFICA ao produto — se você tirar o nome do produto da frase e ela ainda fizer sentido para qualquer outro produto, ela é genérica demais. Reescreva.
 
