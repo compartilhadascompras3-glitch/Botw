@@ -73,6 +73,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const needsPriceInput = product ? product.price === 0 : false;
+  const priceBlockedSite = product?.source === 'shopee' ? 'Shopee' : product?.source === 'ml' ? 'Mercado Livre' : null;
 
   // Reset ao abrir com novo produto
   useEffect(() => {
@@ -280,7 +281,9 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
           {needsPriceInput && versions.length === 0 && !aiLoading && (
             <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: 'rgba(255,160,0,0.07)', border: '1px solid rgba(255,160,0,0.2)' }}>
               <p className="text-xs font-semibold" style={{ color: '#FFA500' }}>
-                ⚠️ O Mercado Livre bloqueia leitura automática de preços. Digite o preço abaixo para gerar os textos.
+                ⚠️ {priceBlockedSite
+                  ? `O ${priceBlockedSite} bloqueia leitura automática de preços. Digite o preço abaixo para gerar os textos.`
+                  : 'Não conseguimos ler o preço deste produto. Preencha abaixo para gerar os textos.'}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>

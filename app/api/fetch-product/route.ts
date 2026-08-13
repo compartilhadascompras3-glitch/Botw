@@ -197,30 +197,48 @@ async function fetchAmazon(url: string): Promise<FetchedProduct | null> {
 }
 
 // ── Shopee ────────────────────────────────────────────────────────────────────
-async function fetchShopee(url: string): Promise<FetchedProduct | null> {
+/** Extrai título do slug da URL da Shopee (ex: "fone-de-ouvido-bluetooth-i.123.456" → "Fone De Ouvido Bluetooth") */
+function titleFromShopeeSlug(url: string): string {
   try {
-    const res = await fetch(url, { headers: HEADERS, redirect: 'follow', signal: AbortSignal.timeout(12000) });
-    const html = await res.text();
+    const u = new URL(url);
+    // pathname: /Fone-de-ouvido-bluetooth-i.SHOPID.ITEMID
+    const seg = u.pathname.split('/').find(s => s.length > 5 && /[a-zA-Z]/.test(s));
+    if (!seg) return '';
+    // Remove o sufixo "-i.SHOPID.ITEMID"
+    const clean = seg.replace(/-i\.\d+\.\d+$/, '').replace(/-/g, ' ');
+    return clean.replace(/\b\w/g, c => c.toUpperCase()).trim();
+  } catch { return ''; }
+}
 
-    // Shopee embute dados no __NEXT_DATA__ ou em meta tags
-    const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
-    const imgMatch   = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-    const priceMatch = html.match(/"price":(\d+)/)
-      ?? html.match(/class="pqTWkA"[^>]*>(R\$\s*[0-9.,]+)/);
+/** Extrai shop_id e item_id de uma URL da Shopee */
+function extractShopeeIds(url: string): { shopId: string; itemId: string } | null {
+  const m = url.match(/i\.(\d+)\.(\d+)/);
+  return m ? { shopId: m[1], itemId: m[2] } : null;
+}
 
-    const title     = titleMatch?.[1]?.trim() ?? '';
-    const thumbnail = imgMatch?.[1] ?? '';
-    const priceRaw  = priceMatch?.[1]?.replace(/[^\d.,]/g, '').replace('.','').replace(',','.') ?? '0';
-    const price     = parseFloat(priceRaw) / 100000 || parseFloat(priceRaw); // Shopee usa centavos*100
+async function fetchShopee(url: string): Promise<FetchedProduct | null> {
+  // Resolve redirects curtos (shp.ee, s.shopee.com.br)
+  let finalUrl = url;
+  try {
+    const res = await fetch(url, { method: 'HEAD', headers: HEADERS, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+    finalUrl = res.url || url;
+  } catch { /* ignora */ }
 
-    if (!title || price <= 0) return null;
+  const ids = extractShopeeIds(finalUrl) ?? extractShopeeIds(url);
+  const slugTitle = titleFromShopeeSlug(finalUrl) || titleFromShopeeSlug(url);
+  const id = ids ? `${ids.shopId}_${ids.itemId}` : `spe_${Date.now()}`;
 
-    const finalUrl = res.url || url;
-    const idMatch  = finalUrl.match(/i\.(\d+)\.(\d+)/);
-    const id = idMatch ? `${idMatch[1]}_${idMatch[2]}` : `spe_${Date.now()}`;
-
-    return { id, title, price, original_price: null, discount_percent: 0, thumbnail, permalink: finalUrl, source: 'shopee' };
-  } catch { return null; }
+  // Retorna com preço=0 para edição manual (Shopee bloqueia scraping server-side)
+  return {
+    id,
+    title: slugTitle || 'Produto Shopee',
+    price: 0,
+    original_price: null,
+    discount_percent: 0,
+    thumbnail: '',
+    permalink: finalUrl,
+    source: 'shopee',
+  };
 }
 
 // ── Generic fallback (Open Graph) ─────────────────────────────────────────────
