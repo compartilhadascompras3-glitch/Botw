@@ -24,16 +24,34 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const qrcode = require('qrcode');
 const pino = require('pino');
 
-// ── Neon DB direto (evita dependência de rede com o app Next.js) ──────────────
-const { neon } = require('@neondatabase/serverless');
-const DB_URL = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
-let _sql = null;
-function getSql() {
-  if (!_sql) {
-    if (!DB_URL) { console.error('[DB] DATABASE_URL não definida!'); return null; }
-    _sql = neon(DB_URL);
+// ── Neon DB via HTTP sem pacote externo ───────────────────────────────────────
+const DB_URL = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || '';
+
+/** Executa uma query SQL no Neon via HTTP usando só fetch nativo do Node 18+ */
+async function dbQuery(query, params = []) {
+  if (!DB_URL) { console.error('[DB] DATABASE_URL não definida!'); return []; }
+  // Neon HTTP endpoint: substitui postgres:// por https:// e adiciona /sql
+  const httpUrl = DB_URL
+    .replace(/^postgres(ql)?:\/\//, 'https://')
+    .replace(/\/([^/?]+)(\?.*)?$/, '/$1/sql$2');
+  // Converte params para o formato Neon: { query, params }
+  try {
+    const res = await fetch(httpUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Neon-Connection-String': DB_URL },
+      body: JSON.stringify({ query, params }),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.error('[DB] HTTP error:', res.status, err.slice(0, 200));
+      return null;
+    }
+    const data = await res.json();
+    return data.rows ?? [];
+  } catch (e) {
+    console.error('[DB] fetch error:', e.message);
+    return null;
   }
-  return _sql;
 }
 const {
   default: makeWASocket,
@@ -285,27 +303,19 @@ function buildMediaMessage(mediaType, base64, filename, caption) {
 const NEXT_API = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://app-0701c13d2e.happyseeds.space').replace(/\/$/, '');
 console.log(`[Scheduler] NEXT_API = ${NEXT_API}`);
 
-/** Busca mensagens do banco diretamente via Neon (fallback: Next.js API) */
+/** Busca mensagens do banco diretamente via Neon HTTP (fallback: Next.js API) */
 async function fetchMessages() {
   // Tenta direto no banco primeiro
-  const sql = getSql();
-  if (sql) {
-    try {
-      const rows = await sql`SELECT id, text, media_data_url, media_name, media_type, send_once, sort_order, created_at FROM messages ORDER BY sort_order ASC, created_at ASC`;
-      return rows;
-    } catch (e) {
-      console.error('[Scheduler] fetchMessages DB error:', e.message);
-    }
-  }
+  const rows = await dbQuery(
+    'SELECT id, text, media_data_url, media_name, media_type, send_once, sort_order, created_at FROM messages ORDER BY sort_order ASC, created_at ASC'
+  );
+  if (rows && rows.length >= 0) return rows;
   // Fallback: Next.js API
   try {
     const res = await fetch(`${NEXT_API}/api/messages`, {
       headers: { 'User-Agent': 'wa-server/1.0', 'Accept': 'application/json' },
     });
-    if (!res.ok) {
-      console.error(`[Scheduler] fetchMessages HTTP ${res.status}`);
-      return [];
-    }
+    if (!res.ok) { console.error(`[Scheduler] fetchMessages HTTP ${res.status}`); return []; }
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (e) {
@@ -317,15 +327,10 @@ async function fetchMessages() {
 /** Deleta uma mensagem do banco — tenta direto no Neon, fallback: Next.js API */
 async function deleteMessage(id) {
   // Tenta direto no banco primeiro
-  const sql = getSql();
-  if (sql) {
-    try {
-      await sql`DELETE FROM messages WHERE id = ${id}`;
-      console.log(`[Scheduler] Mensagem ${id} deletada (DB direto)`);
-      return true;
-    } catch (e) {
-      console.error('[Scheduler] deleteMessage DB error:', e.message);
-    }
+  const rows = await dbQuery('DELETE FROM messages WHERE id = $1', [id]);
+  if (rows !== null) {
+    console.log(`[Scheduler] Mensagem ${id} deletada (DB direto)`);
+    return true;
   }
   // Fallback: Next.js API
   try {
