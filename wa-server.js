@@ -316,9 +316,9 @@ console.log(`[Scheduler] NEXT_API = ${NEXT_API}`);
 
 /** Busca mensagens do banco diretamente via Neon HTTP (fallback: Next.js API) */
 async function fetchMessages() {
-  // Tenta direto no banco primeiro
+  // Tenta direto no banco primeiro — SEM media_data_url para economizar transferência
   const rows = await dbQuery(
-    'SELECT id, text, media_data_url, media_name, media_type, send_once, sort_order, created_at FROM messages ORDER BY sort_order ASC, created_at ASC'
+    'SELECT id, text, media_name, media_type, send_once, sort_order, created_at, (media_data_url IS NOT NULL) AS has_media FROM messages ORDER BY sort_order ASC, created_at ASC'
   );
   if (rows && rows.length >= 0) return rows;
   // Fallback: Next.js API
@@ -333,6 +333,21 @@ async function fetchMessages() {
     console.error('[Scheduler] fetchMessages error:', e.message);
     return [];
   }
+}
+
+/** Busca a media_data_url de uma mensagem específica (só quando for enviar) */
+async function fetchMessageMedia(id) {
+  const rows = await dbQuery('SELECT media_data_url FROM messages WHERE id = $1', [id]);
+  if (rows && rows[0]) return rows[0].media_data_url ?? null;
+  // Fallback: API
+  try {
+    const res = await fetch(`${NEXT_API}/api/messages?id=${encodeURIComponent(id)}`, {
+      headers: { 'User-Agent': 'wa-server/1.0', 'Accept': 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.media_data_url ?? null;
+  } catch { return null; }
 }
 
 /** Deleta uma mensagem do banco — tenta direto no Neon, fallback: Next.js API */
@@ -438,17 +453,24 @@ async function schedulerFire() {
       return;
     }
 
-    const media = msg.mediaDataUrl ? {
-      dataUrl: msg.mediaDataUrl,
-      type: msg.mediaType || 'application/octet-stream',
-      name: msg.mediaName || 'file',
-    } : null;
+    const media = (msg.mediaDataUrl || msg.has_media) ? (() => {
+      // Se já tem dataUrl (veio do fallback API), usa direto
+      // Se só tem has_media=true, busca a imagem agora (lazy load)
+      return { _lazy: !msg.mediaDataUrl, id: msg.id, dataUrl: msg.mediaDataUrl || null, type: msg.mediaType || 'application/octet-stream', name: msg.mediaName || 'file' };
+    })() : null;
 
     const shouldSendGroups = scheduler.groupsEnabled && scheduler.targets.length > 0;
     const shouldPostStatus = scheduler.statusEnabled;
 
     let anyOk = false;
     let errMsg = null;
+
+    // Resolve lazy media (busca imagem só agora, na hora de enviar)
+    if (media?._lazy) {
+      console.log(`[Scheduler] Buscando imagem da mensagem ${media.id}...`);
+      media.dataUrl = await fetchMessageMedia(media.id);
+      media._lazy = false;
+    }
 
     // Envia para grupos
     if (shouldSendGroups) {

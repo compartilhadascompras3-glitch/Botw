@@ -1,14 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { messages } from '@/db/schemas/messages';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, sql } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const rows = await db.select().from(messages).orderBy(asc(messages.sortOrder), asc(messages.createdAt));
+    const id = new URL(req.url).searchParams.get('id');
+    if (id) {
+      // Retorna uma mensagem específica (com media_data_url) para o wa-server buscar lazy
+      const rows = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
+      if (!rows.length) return NextResponse.json({ error: 'not found' }, { status: 404 });
+      return NextResponse.json(rows[0]);
+    }
+    // Lista sem media_data_url para economizar transferência
+    const rows = await db.select({
+      id: messages.id,
+      text: messages.text,
+      mediaName: messages.mediaName,
+      mediaType: messages.mediaType,
+      sendOnce: messages.sendOnce,
+      sortOrder: messages.sortOrder,
+      createdAt: messages.createdAt,
+      hasMedia: sql<boolean>`(media_data_url IS NOT NULL)`,
+    }).from(messages).orderBy(asc(messages.sortOrder), asc(messages.createdAt));
     return NextResponse.json(rows);
   } catch (err) {
     console.error('[messages] GET error:', err);
