@@ -29,16 +29,20 @@ const DB_URL = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || '';
 
 /** Executa uma query SQL no Neon via HTTP usando só fetch nativo do Node 18+ */
 async function dbQuery(query, params = []) {
-  if (!DB_URL) { console.error('[DB] DATABASE_URL não definida!'); return []; }
-  // Neon HTTP endpoint: substitui postgres:// por https:// e adiciona /sql
-  const httpUrl = DB_URL
-    .replace(/^postgres(ql)?:\/\//, 'https://')
-    .replace(/\/([^/?]+)(\?.*)?$/, '/$1/sql$2');
-  // Converte params para o formato Neon: { query, params }
+  if (!DB_URL) { console.error('[DB] DATABASE_URL não definida!'); return null; }
   try {
+    // Extrai host e credenciais da connection string
+    // postgresql://user:pass@host/dbname  →  https://host/dbname/sql  + Authorization header
+    const u = new URL(DB_URL.replace(/^postgres(ql)?:\/\//, 'https://'));
+    const auth = Buffer.from(`${u.username}:${u.password}`).toString('base64');
+    const httpUrl = `https://${u.hostname}${u.pathname}/sql`;
     const res = await fetch(httpUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Neon-Connection-String': DB_URL },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${auth}`,
+        'Neon-Connection-String': DB_URL,
+      },
       body: JSON.stringify({ query, params }),
     });
     if (!res.ok) {
@@ -300,7 +304,14 @@ function buildMediaMessage(mediaType, base64, filename, caption) {
 //   pnpm wa-server
 // Se não for definida, assume localhost:13000 (uso local / preview, onde
 // Next.js e wa-server rodam juntos no mesmo ambiente).
-const NEXT_API = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://app-0701c13d2e.happyseeds.space').replace(/\/$/, '');
+const NEXT_API = (() => {
+  // Ignora URLs do Vercel — app está publicado no HappySeeds
+  const candidates = [
+    process.env.NEXT_API_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+  ].filter(u => u && !u.includes('vercel.app'));
+  return (candidates[0] || 'https://app-0701c13d2e.happyseeds.space').replace(/\/$/, '');
+})();
 console.log(`[Scheduler] NEXT_API = ${NEXT_API}`);
 
 /** Busca mensagens do banco diretamente via Neon HTTP (fallback: Next.js API) */
