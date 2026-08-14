@@ -23,6 +23,18 @@ const { execFile } = require('child_process');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const qrcode = require('qrcode');
 const pino = require('pino');
+
+// ── Neon DB direto (evita dependência de rede com o app Next.js) ──────────────
+const { neon } = require('@neondatabase/serverless');
+const DB_URL = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+let _sql = null;
+function getSql() {
+  if (!_sql) {
+    if (!DB_URL) { console.error('[DB] DATABASE_URL não definida!'); return null; }
+    _sql = neon(DB_URL);
+  }
+  return _sql;
+}
 const {
   default: makeWASocket,
   DisconnectReason,
@@ -273,20 +285,49 @@ function buildMediaMessage(mediaType, base64, filename, caption) {
 const NEXT_API = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://app-0701c13d2e.happyseeds.space').replace(/\/$/, '');
 console.log(`[Scheduler] NEXT_API = ${NEXT_API}`);
 
-/** Busca mensagens do banco via Next.js API */
+/** Busca mensagens do banco diretamente via Neon (fallback: Next.js API) */
 async function fetchMessages() {
+  // Tenta direto no banco primeiro
+  const sql = getSql();
+  if (sql) {
+    try {
+      const rows = await sql`SELECT id, text, media_data_url, media_name, media_type, send_once, sort_order, created_at FROM messages ORDER BY sort_order ASC, created_at ASC`;
+      return rows;
+    } catch (e) {
+      console.error('[Scheduler] fetchMessages DB error:', e.message);
+    }
+  }
+  // Fallback: Next.js API
   try {
-    const res = await fetch(`${NEXT_API}/api/messages`);
-    if (!res.ok) return [];
-    return await res.json();
+    const res = await fetch(`${NEXT_API}/api/messages`, {
+      headers: { 'User-Agent': 'wa-server/1.0', 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      console.error(`[Scheduler] fetchMessages HTTP ${res.status}`);
+      return [];
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   } catch (e) {
     console.error('[Scheduler] fetchMessages error:', e.message);
     return [];
   }
 }
 
-/** Deleta uma mensagem do banco via Next.js API — retorna true se ok */
+/** Deleta uma mensagem do banco — tenta direto no Neon, fallback: Next.js API */
 async function deleteMessage(id) {
+  // Tenta direto no banco primeiro
+  const sql = getSql();
+  if (sql) {
+    try {
+      await sql`DELETE FROM messages WHERE id = ${id}`;
+      console.log(`[Scheduler] Mensagem ${id} deletada (DB direto)`);
+      return true;
+    } catch (e) {
+      console.error('[Scheduler] deleteMessage DB error:', e.message);
+    }
+  }
+  // Fallback: Next.js API
   try {
     const res = await fetch(`${NEXT_API}/api/messages?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -294,7 +335,7 @@ async function deleteMessage(id) {
       console.error(`[Scheduler] deleteMessage ${id} respondeu ${res.status}: ${body.slice(0,120)}`);
       return false;
     }
-    console.log(`[Scheduler] Mensagem ${id} deletada (sendOnce)`);
+    console.log(`[Scheduler] Mensagem ${id} deletada (API)`);
     return true;
   } catch (e) {
     console.error('[Scheduler] deleteMessage error:', e.message);
