@@ -197,14 +197,12 @@ async function fetchAmazon(url: string): Promise<FetchedProduct | null> {
 }
 
 // ── Shopee ────────────────────────────────────────────────────────────────────
-/** Extrai título do slug da URL da Shopee (ex: "fone-de-ouvido-bluetooth-i.123.456" → "Fone De Ouvido Bluetooth") */
+/** Extrai título do slug da URL da Shopee */
 function titleFromShopeeSlug(url: string): string {
   try {
     const u = new URL(url);
-    // pathname: /Fone-de-ouvido-bluetooth-i.SHOPID.ITEMID
     const seg = u.pathname.split('/').find(s => s.length > 5 && /[a-zA-Z]/.test(s));
     if (!seg) return '';
-    // Remove o sufixo "-i.SHOPID.ITEMID"
     const clean = seg.replace(/-i\.\d+\.\d+$/, '').replace(/-/g, ' ');
     return clean.replace(/\b\w/g, c => c.toUpperCase()).trim();
   } catch { return ''; }
@@ -226,9 +224,36 @@ async function fetchShopee(url: string): Promise<FetchedProduct | null> {
 
   const ids = extractShopeeIds(finalUrl) ?? extractShopeeIds(url);
   const slugTitle = titleFromShopeeSlug(finalUrl) || titleFromShopeeSlug(url);
-  const id = ids ? `${ids.shopId}_${ids.itemId}` : `spe_${Date.now()}`;
 
-  // Retorna com preço=0 para edição manual (Shopee bloqueia scraping server-side)
+  // Tenta buscar dados reais via API de afiliados (se tiver itemId e shopId)
+  if (ids) {
+    try {
+      const { fetchShopeeProductById, shopeePrice } = await import('@/lib/shopee-affiliate');
+      const product = await fetchShopeeProductById(ids.itemId, ids.shopId);
+      if (product) {
+        const price = shopeePrice(product.priceMin || product.price);
+        const originalPrice = product.priceDiscountRate > 0
+          ? Math.round(price / (1 - product.priceDiscountRate / 100))
+          : null;
+        return {
+          id: `spe_${ids.shopId}_${ids.itemId}`,
+          title: product.productName,
+          price,
+          original_price: originalPrice,
+          discount_percent: product.priceDiscountRate || 0,
+          thumbnail: product.imageUrl,
+          permalink: product.offerLink || product.productLink || finalUrl,
+          source: 'shopee',
+          seller_name: product.shopName,
+        };
+      }
+    } catch (e) {
+      console.error('[fetch-product] Shopee affiliate error:', (e as Error).message);
+    }
+  }
+
+  // Fallback: retorna com título do slug e preço=0 para edição manual
+  const id = ids ? `${ids.shopId}_${ids.itemId}` : `spe_${Date.now()}`;
   return {
     id,
     title: slugTitle || 'Produto Shopee',
