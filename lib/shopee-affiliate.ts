@@ -101,27 +101,26 @@ const PRODUCT_FIELDS = `
 /** Busca ofertas de produtos — sortType 2 = mais recentes */
 export async function fetchShopeeDeals(limit = 20, sortType = 2): Promise<ShopeeProduct[]> {
   const data = await shopeeGraphQL<{
-    productOfferV2: { nodes: ShopeeProduct[]; totalCount: number };
+    productOfferV2: { nodes: ShopeeProduct[] };
   }>(`{
     productOfferV2(page: 1, limit: ${limit}, sortType: ${sortType}) {
       nodes { ${PRODUCT_FIELDS} }
-      totalCount
     }
   }`);
   return data?.productOfferV2?.nodes ?? [];
 }
 
-/** Busca produto por itemId e shopId via getItemFeedData */
+/** Busca produto específico por itemId e shopId via productOfferV2 */
 export async function fetchShopeeProductById(
   itemId: string,
   shopId: string
 ): Promise<ShopeeProduct | null> {
   const data = await shopeeGraphQL<{
-    getItemFeedData: { nodes: ShopeeProduct[] };
+    productOfferV2: { nodes: ShopeeProduct[] };
   }>(`{
-    getItemFeedData(itemList: [{itemId: ${itemId}, shopId: ${shopId}}]) {
+    productOfferV2(itemId: ${itemId}, shopId: ${shopId}, limit: 1) {
       nodes { ${PRODUCT_FIELDS} }
     }
   }`);
-  return data?.getItemFeedData?.nodes?.[0] ?? null;
+  return data?.productOfferV2?.nodes?.[0] ?? null;
 }
