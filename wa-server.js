@@ -454,11 +454,22 @@ async function schedulerFire() {
       return;
     }
 
-    const media = (msg.mediaDataUrl || msg.has_media) ? (() => {
-      // Se já tem dataUrl (veio do fallback API), usa direto
-      // Se só tem has_media=true, busca a imagem agora (lazy load)
-      return { _lazy: !msg.mediaDataUrl, id: msg.id, dataUrl: msg.mediaDataUrl || null, type: msg.mediaType || 'application/octet-stream', name: msg.mediaName || 'file' };
-    })() : null;
+    // Normaliza campos snake_case (vindos do Neon direto) para camelCase
+    const msgId       = msg.id;
+    const msgText     = msg.text ?? '';
+    const msgMediaUrl = msg.mediaDataUrl ?? msg.media_data_url ?? null;
+    const msgHasMedia = !!(msg.has_media || msg.hasMedia || msgMediaUrl);
+    const msgMediaType = msg.mediaType ?? msg.media_type ?? 'application/octet-stream';
+    const msgMediaName = msg.mediaName ?? msg.media_name ?? 'file';
+    const msgSendOnce  = msg.sendOnce  ?? msg.send_once  ?? false;
+
+    const media = msgHasMedia ? {
+      _lazy: !msgMediaUrl,
+      id: msgId,
+      dataUrl: msgMediaUrl,
+      type: msgMediaType,
+      name: msgMediaName,
+    } : null;
 
     const shouldSendGroups = scheduler.groupsEnabled && scheduler.targets.length > 0;
     const shouldPostStatus = scheduler.statusEnabled;
@@ -471,7 +482,12 @@ async function schedulerFire() {
       console.log(`[Scheduler] Buscando imagem da mensagem ${media.id}...`);
       media.dataUrl = await fetchMessageMedia(media.id);
       media._lazy = false;
+      if (!media.dataUrl) {
+        console.warn(`[Scheduler] Imagem não encontrada para mensagem ${media.id} — enviando sem imagem`);
+      }
     }
+
+    console.log(`[Scheduler] Enviando msg ${msgId} | hasMedia=${msgHasMedia} | dataUrl=${media?.dataUrl ? 'OK('+Math.round((media.dataUrl.length)/1024)+'KB)' : 'null'} | type=${msgMediaType}`);
 
     // Envia para grupos
     if (shouldSendGroups) {
@@ -479,11 +495,11 @@ async function schedulerFire() {
         try {
           const jid = toJid(target.id);
           await ensureGroupMetadata(sock, jid);
-          if (media) {
+          if (media?.dataUrl) {
             const base64 = base64FromDataUrl(media.dataUrl);
-            await sock.sendMessage(jid, buildMediaMessage(media.type, base64, media.name, msg.text));
+            await sock.sendMessage(jid, buildMediaMessage(media.type, base64, media.name, msgText));
           } else {
-            await sock.sendMessage(jid, { text: msg.text });
+            await sock.sendMessage(jid, { text: msgText });
           }
           anyOk = true;
           console.log(`[Scheduler] Enviado para ${jid}`);
@@ -497,11 +513,11 @@ async function schedulerFire() {
     // Posta no Status
     if (shouldPostStatus) {
       try {
-        if (media) {
+        if (media?.dataUrl) {
           const base64 = base64FromDataUrl(media.dataUrl);
-          await sock.sendMessage('status@broadcast', buildMediaMessage(media.type, base64, media.name, msg.text));
+          await sock.sendMessage('status@broadcast', buildMediaMessage(media.type, base64, media.name, msgText));
         } else {
-          await sock.sendMessage('status@broadcast', { text: msg.text || '' });
+          await sock.sendMessage('status@broadcast', { text: msgText || '' });
         }
         anyOk = true;
         console.log('[Scheduler] Status postado');
@@ -514,23 +530,23 @@ async function schedulerFire() {
       // Registra no histórico
       await addHistory({
         id: `hist_${Date.now()}`,
-        messageId: msg.id,
-        messageText: msg.text,
-        hasMedia: !!media,
+        messageId: msgId,
+        messageText: msgText,
+        hasMedia: msgHasMedia,
         targets: shouldSendGroups ? scheduler.targets : [],
         sentAt: Date.now(),
       });
 
       // Remove se sendOnce, senão avança índice
-      if (msg.sendOnce) {
+      if (msgSendOnce) {
         // Tenta deletar até 3 vezes para garantir que não reenvia
         let deleted = false;
         for (let attempt = 0; attempt < 3 && !deleted; attempt++) {
           if (attempt > 0) await new Promise(r => setTimeout(r, 500));
-          deleted = await deleteMessage(msg.id);
+          deleted = await deleteMessage(msgId);
         }
         if (!deleted) {
-          console.error(`[Scheduler] AVISO: não conseguiu deletar mensagem sendOnce ${msg.id} — pode reenviar no próximo ciclo`);
+          console.error(`[Scheduler] AVISO: não conseguiu deletar mensagem sendOnce ${msgId} — pode reenviar no próximo ciclo`);
         }
         const newMsgs = await fetchMessages();
         scheduler.currentIndex = Math.min(scheduler.currentIndex, Math.max(0, newMsgs.length - 1));
