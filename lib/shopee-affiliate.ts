@@ -10,6 +10,12 @@ import { eq } from 'drizzle-orm';
 const SHOPEE_API = 'https://open-api.affiliate.shopee.com.br/graphql';
 
 async function getCredentials(): Promise<{ appId: string; secret: string } | null> {
+  // Tenta env vars primeiro (mais rápido e confiável no Workers)
+  const envAppId = process.env.SHOPEE_APP_ID ?? '';
+  const envSecret = process.env.SHOPEE_SECRET ?? '';
+  if (envAppId && envSecret) return { appId: envAppId, secret: envSecret };
+
+  // Fallback: banco de dados
   try {
     const rows = await db
       .select({ key: settings.key, value: settings.value })
@@ -20,8 +26,8 @@ async function getCredentials(): Promise<{ appId: string; secret: string } | nul
       .from(settings)
       .where(eq(settings.key, 'shopee_secret'));
 
-    const appId = rows[0]?.value ?? process.env.SHOPEE_APP_ID ?? '';
-    const secret = rows2[0]?.value ?? process.env.SHOPEE_SECRET ?? '';
+    const appId = rows[0]?.value ?? '';
+    const secret = rows2[0]?.value ?? '';
     if (!appId || !secret) return null;
     return { appId, secret };
   } catch { return null; }
