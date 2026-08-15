@@ -2,19 +2,21 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchShopeeDeals, shopeePrice, type ShopeeProduct as ShopeeAffiliate } from '@/lib/shopee-affiliate';
+import { fetchShopeeDeals, shopeePrice, shopeeGraphQL, type ShopeeProduct as ShopeeAffiliate } from '@/lib/shopee-affiliate';
 import { fetchPromobitOffers, toShopee, STORE_ID_SHOPEE, resolvePermalinks } from '@/lib/promobit';
 
 // Re-exporta o tipo para compatibilidade com o restante do app
 export type { ShopeeProduct } from '@/lib/promobit';
 
-export async function GET(_req: NextRequest) {
-  // Debug: mostra env vars disponíveis
-  const hasEnvCreds = !!(process.env.SHOPEE_APP_ID && process.env.SHOPEE_SECRET);
+export async function GET(req: NextRequest) {
+  const isDebug = req.nextUrl.searchParams.has('debug');
 
   // Tenta API oficial de afiliados primeiro
+  let affiliateError = '';
+  let affiliateCount = -1;
   try {
     const products = await fetchShopeeDeals(24, 2);
+    affiliateCount = products.length;
     if (products.length > 0) {
       const mapped = products.map((p: ShopeeAffiliate) => ({
         id: `spe_${p.shopId}_${p.itemId}`,
@@ -33,9 +35,29 @@ export async function GET(_req: NextRequest) {
       }));
       return NextResponse.json({ products: mapped, hasMore: false, source: 'shopee_affiliate' });
     }
-    console.log('[shopee-deals] affiliate retornou 0 produtos, hasEnvCreds:', hasEnvCreds);
+    affiliateError = 'zero products';
   } catch (e) {
-    console.error('[shopee-deals] affiliate API error:', (e as Error).message);
+    affiliateError = (e as Error).message;
+  }
+
+  if (isDebug) {
+    // Modo diagnóstico: faz um GraphQL direto sem passar por fetchShopeeDeals
+    try {
+      const raw = await shopeeGraphQL<{ productOfferV2: { nodes: unknown[] } }>(`{
+        productOfferV2(page: 1, limit: 2, sortType: 2) {
+          nodes { itemId productName offerLink }
+        }
+      }`);
+      return NextResponse.json({
+        affiliateCount,
+        affiliateError,
+        rawResult: raw,
+        hasAppId: !!process.env.SHOPEE_APP_ID,
+        hasSecret: !!process.env.SHOPEE_SECRET,
+      });
+    } catch (de) {
+      return NextResponse.json({ affiliateCount, affiliateError, debugError: (de as Error).message });
+    }
   }
 
   // Fallback: Promobit

@@ -28,9 +28,14 @@ async function getCredentials(): Promise<{ appId: string; secret: string } | nul
 
     const appId = rows[0]?.value ?? '';
     const secret = rows2[0]?.value ?? '';
-    if (!appId || !secret) return null;
-    return { appId, secret };
-  } catch { return null; }
+    // Credenciais padrão como fallback absoluto
+    return {
+      appId: appId || '18337771181',
+      secret: secret || 'GJJVJ2IHPCL2T7OWPC5FY2AS43NSTLW4',
+    };
+  } catch {
+    return { appId: '18337771181', secret: 'GJJVJ2IHPCL2T7OWPC5FY2AS43NSTLW4' };
+  }
 }
 
 /** SHA256 usando Web Crypto API (compatível com Cloudflare Workers e Node 18+) */
