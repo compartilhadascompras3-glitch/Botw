@@ -454,6 +454,39 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
   return extractResult(rawText);
 }
 
+/** Chama o Groq com a chave já resolvida */
+async function callGroqWithKey(key: string, imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
+  if (!key) throw new Error('GROQ_API_KEY não configurado.');
+  void imageBase64; void mimeType;
+  const body = {
+    model: GROQ_MODEL,
+    temperature: 1.0,
+    max_tokens: 2500,
+    reasoning_effort: 'none',
+    messages: [
+      { role: 'system', content: GROQ_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp usando os dados abaixo. APENAS o JSON, zero texto fora do JSON.\n\n${linkLine.trim()}`,
+      },
+    ],
+  };
+  const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${key}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq respondeu ${res.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+  const text = data.choices?.[0]?.message?.content ?? '';
+  if (!text) throw new Error('Groq não retornou conteúdo.');
+  return extractResult(text);
+}
+
 /** Chama o Groq (llama-3.3-70b, texto puro — usa dados do produto) */
 async function callGroq(imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
   const key = await getGroqKey();
@@ -496,9 +529,11 @@ export async function POST(req: NextRequest) {
   const isLocalProvider = /localhost|127\.0\.0\.1/.test(LLM_BASE_URL);
   const hasOpenAI  = Boolean(LLM_BASE_URL) && (isLocalProvider || Boolean(LLM_API_KEY));
   const hasReactus = Boolean(BTY_BASE && BTY_KEY);
+  // Busca chave Groq agora (env ou banco) — garante que hasGroq seja correto
   const groqKey    = await getGroqKey();
   const hasGroq    = Boolean(groqKey);
 
+  // Sempre temos pelo menos Groq (chave em .env injetada pelo pipeline) ou OpenRouter
   if (!hasOpenAI && !hasReactus && !hasGroq) {
     return NextResponse.json(
       { error: 'IA não configurada. Defina LLM_API_KEY ou GROQ_API_KEY no .env.' },
@@ -558,7 +593,7 @@ export async function POST(req: NextRequest) {
 
     const callProvider = (p: Provider) => {
       if (p === 'bty')  return callReactus(cleanB64, mimeType, linkLine);
-      if (p === 'groq') return callGroq(cleanB64, mimeType, linkLine);
+      if (p === 'groq') return callGroqWithKey(groqKey, cleanB64, mimeType, linkLine);
       return callOpenAICompatible(cleanB64, mimeType, linkLine);
     };
 
@@ -574,10 +609,11 @@ export async function POST(req: NextRequest) {
         break;
       } catch (err) {
         const errStr = String(err);
-        // 402 = sem créditos no provider — faz fallback mesmo se provider foi escolhido manualmente
-        const isPaymentRequired = errStr.includes('402');
-        if (preferredProvider && !isPaymentRequired) throw err; // erro direto — sem fallback
-        console.warn(`generate-promo: ${p} falhou, tentando próximo:`, errStr.slice(0, 150));
+        // 402 = sem créditos, 429 = rate limit, 5xx = erro do servidor
+        // Em qualquer um desses casos faz fallback para o próximo provider
+        const shouldFallback = errStr.includes('402') || errStr.includes('429') || errStr.includes('5') || !preferredProvider;
+        if (preferredProvider && !shouldFallback) throw err; // erro direto — sem fallback
+        console.warn(`generate-promo: ${p} falhou (${errStr.slice(0, 80)}), tentando próximo provider...`);
         lastErr = err;
       }
     }
