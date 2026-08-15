@@ -11,6 +11,8 @@ export interface BotMessage {
   mediaType?: string;
   sendOnce?: boolean;
   createdAt: number;
+  /** true quando o banco tem media_data_url mas não foi carregada ainda (lazy load) */
+  hasMedia?: boolean;
 }
 
 export interface Target {

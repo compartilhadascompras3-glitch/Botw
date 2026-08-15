@@ -7,6 +7,7 @@ type DbMessage = Omit<BotMessage, 'id' | 'createdAt'> & {
   id: string;
   createdAt: number;
   sortOrder: number;
+  hasMedia?: boolean;
 };
 
 async function apiFetch(path: string, options?: RequestInit) {
@@ -41,6 +42,8 @@ function loadFromDb(): Promise<void> {
         mediaType:    r.mediaType ?? undefined,
         sendOnce:     r.sendOnce ?? false,
         createdAt:    r.createdAt,
+        // hasMedia vem do campo SQL calculado; se mediaDataUrl já veio, também é true
+        hasMedia:     !!(r.hasMedia || r.mediaDataUrl),
       }));
       useBotStore.setState({ messages: msgs });
     })

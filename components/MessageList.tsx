@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useBotStore, BotMessage, Target } from '@/store/botStore';
 import { useMessagesDb } from '@/hooks/use-messages-db';
@@ -226,6 +226,18 @@ function MessageCard({
   const [draftMedia, setDraftMedia] = useState<{ dataUrl: string; name: string; type: string } | null>(
     message.mediaDataUrl ? { dataUrl: message.mediaDataUrl, name: message.mediaName ?? '', type: message.mediaType ?? '' } : null
   );
+  // Lazy-load: se hasMedia=true mas mediaDataUrl ainda não carregou, busca do banco
+  const [loadedDataUrl, setLoadedDataUrl] = useState<string | undefined>(message.mediaDataUrl);
+  useEffect(() => {
+    if (message.mediaDataUrl) { setLoadedDataUrl(message.mediaDataUrl); return; }
+    if (!message.hasMedia) return;
+    fetch(`/api/messages?id=${encodeURIComponent(message.id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((row: { mediaDataUrl?: string; mediaName?: string; mediaType?: string } | null) => {
+        if (row?.mediaDataUrl) setLoadedDataUrl(row.mediaDataUrl);
+      })
+      .catch(() => { /* sem imagem */ });
+  }, [message.id, message.hasMedia, message.mediaDataUrl]);
 
   const handleSave = () => {
     if (!draftText.trim() && !draftMedia) return;
@@ -249,7 +261,20 @@ function MessageCard({
     setSending(true);
     setSendFeedback(null);
     try {
-      const result = await onSendNow(message);
+      // Garante que a imagem está carregada antes de enviar
+      let msgToSend = message;
+      if (message.hasMedia && !message.mediaDataUrl && !loadedDataUrl) {
+        try {
+          const row = await fetch(`/api/messages?id=${encodeURIComponent(message.id)}`).then(r => r.json()) as { mediaDataUrl?: string; mediaName?: string; mediaType?: string };
+          if (row.mediaDataUrl) {
+            setLoadedDataUrl(row.mediaDataUrl);
+            msgToSend = { ...message, mediaDataUrl: row.mediaDataUrl, mediaName: row.mediaName, mediaType: row.mediaType };
+          }
+        } catch { /* sem imagem */ }
+      } else if (loadedDataUrl && !message.mediaDataUrl) {
+        msgToSend = { ...message, mediaDataUrl: loadedDataUrl };
+      }
+      const result = await onSendNow(msgToSend);
       const parts: string[] = [];
       if (result.groupsSent > 0) parts.push(`${result.groupsSent} grupo${result.groupsSent > 1 ? 's' : ''}`);
       if (result.statusPosted) parts.push('Status');
@@ -262,7 +287,8 @@ function MessageCard({
     }
   };
 
-  const hasMedia = !!message.mediaDataUrl;
+  const hasMedia = !!(message.hasMedia || message.mediaDataUrl || loadedDataUrl);
+  const displayDataUrl = loadedDataUrl ?? message.mediaDataUrl;
 
   return (
     <div className="rounded-2xl shadow-sm border overflow-hidden transition-all"
@@ -319,15 +345,21 @@ function MessageCard({
               {/* Media preview (read mode) */}
               {hasMedia && message.mediaType?.startsWith('image/') && (
                 <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-                  <Image src={message.mediaDataUrl!} alt={message.mediaName ?? 'imagem'}
-                    width={400} height={200} className="w-full object-cover max-h-40" style={{ objectFit: 'cover' }} />
+                  {displayDataUrl
+                    ? <Image src={displayDataUrl} alt={message.mediaName ?? 'imagem'}
+                        width={400} height={200} className="w-full object-cover max-h-40" style={{ objectFit: 'cover' }} />
+                    : <div className="w-full max-h-40 h-24 flex items-center justify-center animate-pulse"
+                        style={{ background: 'var(--secondary)' }}>
+                        <span className="text-xs text-muted-foreground">Carregando imagem…</span>
+                      </div>
+                  }
                 </div>
               )}
               {hasMedia && !message.mediaType?.startsWith('image/') && (
                 <div className="flex items-center gap-2 rounded-xl px-3 py-2"
                   style={{ background: 'var(--secondary)' }}>
                   <span style={{ color: 'var(--wa-dark-green)' }}>{mediaIcon(message.mediaType)}</span>
-                  <span className="text-xs text-muted-foreground truncate">{message.mediaName}</span>
+                  <span className="text-xs text-muted-foreground truncate">{message.mediaName ?? 'arquivo'}</span>
                 </div>
               )}
               {message.text && (
