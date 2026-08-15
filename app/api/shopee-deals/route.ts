@@ -31,8 +31,12 @@ export async function GET(_req: NextRequest) {
       }));
       return NextResponse.json({ products: mapped, hasMore: false, source: 'shopee_affiliate' });
     }
+    // Retorna motivo do fallback para debug
+    console.log('[shopee-deals] affiliate returned 0 products, falling back to promobit');
   } catch (e) {
     console.error('[shopee-deals] affiliate API error:', (e as Error).message);
+    // Expõe erro no response para debug temporário
+    return NextResponse.json({ products: [], source: 'affiliate_error', error: (e as Error).message }, { status: 200 });
   }
 
   // Fallback: Promobit
