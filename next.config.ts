@@ -6,6 +6,7 @@ dotenv.config({ path: '.env', override: true });
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
+  output: 'standalone',
   turbopack: {},
   typescript: {
     ignoreBuildErrors: true,
