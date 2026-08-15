@@ -9,9 +9,9 @@ import { fetchPromobitOffers, toShopee, STORE_ID_SHOPEE, resolvePermalinks } fro
 export type { ShopeeProduct } from '@/lib/promobit';
 
 export async function GET(_req: NextRequest) {
-  // Tenta API oficial de afiliados primeiro
+  // Tenta API oficial de afiliados primeiro — 2 páginas de 50 = até 100 produtos
   try {
-    const products = await fetchShopeeDeals(24, 2);
+    const products = await fetchShopeeDeals(100, 2);
     if (products.length > 0) {
       const mapped = products.map((p: ShopeeAffiliate) => ({
         id: `spe_${p.shopId}_${p.itemId}`,

@@ -117,16 +117,43 @@ const PRODUCT_FIELDS = `
   imageUrl productLink offerLink commissionRate shopName ratingStar
 `;
 
-/** Busca ofertas de produtos — sortType 2 = mais recentes */
-export async function fetchShopeeDeals(limit = 20, sortType = 2): Promise<ShopeeProduct[]> {
+/** Busca uma página de ofertas */
+async function fetchShopeePage(page: number, limit: number, sortType: number): Promise<ShopeeProduct[]> {
   const data = await shopeeGraphQL<{
     productOfferV2: { nodes: ShopeeProduct[] };
   }>(`{
-    productOfferV2(page: 1, limit: ${limit}, sortType: ${sortType}) {
+    productOfferV2(page: ${page}, limit: ${limit}, sortType: ${sortType}) {
       nodes { ${PRODUCT_FIELDS} }
     }
   }`);
   return data?.productOfferV2?.nodes ?? [];
+}
+
+/**
+ * Busca ofertas de produtos em múltiplas páginas em paralelo.
+ * sortType: 1 = comissão, 2 = recentes, 3 = mais vendidos
+ */
+export async function fetchShopeeDeals(totalWanted = 100, sortType = 2): Promise<ShopeeProduct[]> {
+  const pageSize = 50; // máximo suportado pela API
+  const pages = Math.ceil(totalWanted / pageSize);
+
+  // Busca todas as páginas em paralelo
+  const results = await Promise.allSettled(
+    Array.from({ length: pages }, (_, i) => fetchShopeePage(i + 1, pageSize, sortType))
+  );
+
+  const all: ShopeeProduct[] = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled') all.push(...r.value);
+  }
+
+  // Deduplica por itemId
+  const seen = new Set<number>();
+  return all.filter(p => {
+    if (seen.has(p.itemId)) return false;
+    seen.add(p.itemId);
+    return true;
+  });
 }
 
 /** Busca produto específico por itemId e shopId via productOfferV2 */
