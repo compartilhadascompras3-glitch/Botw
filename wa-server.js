@@ -339,14 +339,15 @@ async function fetchMessages() {
 async function fetchMessageMedia(id) {
   const rows = await dbQuery('SELECT media_data_url FROM messages WHERE id = $1', [id]);
   if (rows && rows[0]) return rows[0].media_data_url ?? null;
-  // Fallback: API
+  // Fallback: API (retorna camelCase: mediaDataUrl)
   try {
     const res = await fetch(`${NEXT_API}/api/messages?id=${encodeURIComponent(id)}`, {
       headers: { 'User-Agent': 'wa-server/1.0', 'Accept': 'application/json' },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data?.media_data_url ?? null;
+    // A API Next.js retorna camelCase (mediaDataUrl), não snake_case
+    return data?.mediaDataUrl ?? data?.media_data_url ?? null;
   } catch { return null; }
 }
 

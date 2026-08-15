@@ -226,17 +226,32 @@ function MessageCard({
   const [draftMedia, setDraftMedia] = useState<{ dataUrl: string; name: string; type: string } | null>(
     message.mediaDataUrl ? { dataUrl: message.mediaDataUrl, name: message.mediaName ?? '', type: message.mediaType ?? '' } : null
   );
-  // Lazy-load: se hasMedia=true mas mediaDataUrl ainda não carregou, busca do banco
+  // Se mediaDataUrl já está no store, usa direto; senão usa o que foi lazy-loaded
   const [loadedDataUrl, setLoadedDataUrl] = useState<string | undefined>(message.mediaDataUrl);
+
   useEffect(() => {
-    if (message.mediaDataUrl) { setLoadedDataUrl(message.mediaDataUrl); return; }
-    if (!message.hasMedia) return;
+    // Sincroniza quando o store atualiza o mediaDataUrl (ex: após outro lazy-load salvar)
+    if (message.mediaDataUrl) {
+      setLoadedDataUrl(message.mediaDataUrl);
+      return;
+    }
+    if (!message.hasMedia || loadedDataUrl) return;
+    // Lazy-load: busca do banco e persiste no store para não recarregar depois
     fetch(`/api/messages?id=${encodeURIComponent(message.id)}`)
       .then(r => r.ok ? r.json() : null)
       .then((row: { mediaDataUrl?: string; mediaName?: string; mediaType?: string } | null) => {
-        if (row?.mediaDataUrl) setLoadedDataUrl(row.mediaDataUrl);
+        if (row?.mediaDataUrl) {
+          setLoadedDataUrl(row.mediaDataUrl);
+          // Persiste no store Zustand — evita recarregar quando o componente remontar
+          useBotStore.getState().updateMessage(message.id, {
+            mediaDataUrl: row.mediaDataUrl,
+            mediaName: row.mediaName ?? message.mediaName,
+            mediaType: row.mediaType ?? message.mediaType,
+          });
+        }
       })
       .catch(() => { /* sem imagem */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message.id, message.hasMedia, message.mediaDataUrl]);
 
   const handleSave = () => {
