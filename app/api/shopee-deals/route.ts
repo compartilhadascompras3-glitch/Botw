@@ -9,10 +9,12 @@ import { fetchPromobitOffers, toShopee, STORE_ID_SHOPEE, resolvePermalinks } fro
 export type { ShopeeProduct } from '@/lib/promobit';
 
 export async function GET(_req: NextRequest) {
+  // Debug: mostra env vars disponíveis
+  const hasEnvCreds = !!(process.env.SHOPEE_APP_ID && process.env.SHOPEE_SECRET);
+
   // Tenta API oficial de afiliados primeiro
   try {
     const products = await fetchShopeeDeals(24, 2);
-    console.log('[shopee-deals] affiliate products:', products.length);
     if (products.length > 0) {
       const mapped = products.map((p: ShopeeAffiliate) => ({
         id: `spe_${p.shopId}_${p.itemId}`,
@@ -31,12 +33,9 @@ export async function GET(_req: NextRequest) {
       }));
       return NextResponse.json({ products: mapped, hasMore: false, source: 'shopee_affiliate' });
     }
-    // Retorna motivo do fallback para debug
-    console.log('[shopee-deals] affiliate returned 0 products, falling back to promobit');
+    console.log('[shopee-deals] affiliate retornou 0 produtos, hasEnvCreds:', hasEnvCreds);
   } catch (e) {
     console.error('[shopee-deals] affiliate API error:', (e as Error).message);
-    // Expõe erro no response para debug temporário
-    return NextResponse.json({ products: [], source: 'affiliate_error', error: (e as Error).message }, { status: 200 });
   }
 
   // Fallback: Promobit
