@@ -3,7 +3,6 @@
  * Doc: https://open-api.affiliate.shopee.com.br/graphql
  */
 
-import { createHash } from 'crypto';
 import { db } from '@/db';
 import { settings } from '@/db/schemas/settings';
 import { eq } from 'drizzle-orm';
@@ -28,9 +27,18 @@ async function getCredentials(): Promise<{ appId: string; secret: string } | nul
   } catch { return null; }
 }
 
-function buildAuth(appId: string, secret: string, payload: string, timestamp: number): string {
+/** SHA256 usando Web Crypto API (compatível com Cloudflare Workers e Node 18+) */
+async function sha256Hex(data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function buildAuth(appId: string, secret: string, payload: string, timestamp: number): Promise<string> {
   const factor = appId + String(timestamp) + payload + secret;
-  const signature = createHash('sha256').update(factor).digest('hex');
+  const signature = await sha256Hex(factor);
   return `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`;
 }
 
@@ -40,7 +48,7 @@ export async function shopeeGraphQL<T = unknown>(query: string): Promise<T | nul
 
   const timestamp = Math.floor(Date.now() / 1000);
   const payload = JSON.stringify({ query });
-  const auth = buildAuth(creds.appId, creds.secret, payload, timestamp);
+  const auth = await buildAuth(creds.appId, creds.secret, payload, timestamp);
 
   try {
     const res = await fetch(SHOPEE_API, {
