@@ -12,6 +12,7 @@ export async function GET(_req: NextRequest) {
   // Tenta API oficial de afiliados primeiro
   try {
     const products = await fetchShopeeDeals(24, 2);
+    console.log('[shopee-deals] affiliate products:', products.length);
     if (products.length > 0) {
       const mapped = products.map((p: ShopeeAffiliate) => ({
         id: `spe_${p.shopId}_${p.itemId}`,
