@@ -45,7 +45,10 @@ export function ProductCard({ product, accentColor = '#00D4FF', accentGrad, alre
   const grad = accentGrad ?? 'linear-gradient(135deg, #00D4FF 0%, #00FF88 100%)';
   const amz = isAmazon(product);
   const isMlPromobit = (product as MLProduct).source === 'ml_promobit';
-  const isPromobit = amz || isShopee(product);
+  const isSpe = isShopee(product);
+  const isPromobit = amz || isSpe;
+  // Shopee com link afiliado rastreado (s.shopee.com.br) vs Promobit sem afiliado
+  const hasAffiliateLink = isSpe && /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
 
   const handleCopy = async () => {
     try {
@@ -111,6 +114,21 @@ export function ProductCard({ product, accentColor = '#00D4FF', accentGrad, alre
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,212,255,0.12)', color: '#00D4FF', border: '1px solid rgba(0,212,255,0.25)' }}>
             via Promobit
           </span>
+        </div>
+      )}
+
+      {/* Badge Shopee: afiliado rastreado ou sem afiliado */}
+      {isSpe && !alreadyAdded && (
+        <div className="absolute top-3 right-3 z-10">
+          {hasAffiliateLink ? (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(37,211,102,0.15)', color: '#25D366', border: '1px solid rgba(37,211,102,0.35)' }}>
+              ✓ Afiliado
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,160,0,0.15)', color: '#FFA500', border: '1px solid rgba(255,160,0,0.35)' }}>
+              Promobit
+            </span>
+          )}
         </div>
       )}
 

@@ -82,10 +82,12 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     setEditedTexts([]);
     setSelectedIdx(0);
     setAiError(null);
-    setAffiliateLink('');
     setSaved(false);
     setPriceEdit('');
     setOrigEdit('');
+    // Preenche link de afiliado automaticamente se o permalink já for rastreado
+    const isTrackedLink = /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
+    setAffiliateLink(isTrackedLink ? product.permalink : '');
     // Só gera automaticamente se tiver preço
     if (product.price > 0) {
       generateTexts(product, aiModel);
@@ -329,10 +331,17 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
 
           {/* Link de afiliado */}
           <div>
-            <p className="text-[11px] font-semibold mb-2 uppercase tracking-wider" style={{ color: '#666' }}>
-              Link de afiliado
-            </p>
-            <div className="flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: '#111', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#666' }}>
+                Link de afiliado
+              </p>
+              {affiliateLink && /s\.shopee\.com\.br|shp\.ee/i.test(affiliateLink) && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.3)' }}>
+                  ✓ Rastreado
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: '#111', border: `1px solid ${affiliateLink ? 'rgba(37,211,102,0.25)' : 'rgba(255,255,255,0.08)'}` }}>
               <input
                 ref={linkInputRef}
                 type="url"
@@ -347,6 +356,12 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
                 </button>
               )}
             </div>
+            {/* Aviso quando é produto Shopee sem link afiliado automático */}
+            {isSpe && !affiliateLink && (
+              <p className="text-[11px] mt-1.5 px-1" style={{ color: '#FFA500' }}>
+                ⚠️ Este produto veio do Promobit — cole seu link de afiliado Shopee acima ou clique em &quot;Abrir Shopee&quot; para pegar.
+              </p>
+            )}
             <button
               onClick={openApp}
               className="mt-2 w-full flex items-center justify-center gap-2 text-xs font-semibold py-2.5 rounded-xl cursor-pointer transition-all"
