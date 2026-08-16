@@ -622,7 +622,85 @@ function getSchedulerState() {
   };
 }
 
+// ── ML Link Server (meli.la) integrado ────────────────────────────────────────
+// Gera links curtos meli.la via Playwright. Rotas: /ml/shorten e /ml/status
+
+const ML_COOKIES_FILE = path.join(__dirname, 'ml-cookies.json');
+const mlLinkCache = new Map();
+const ML_CACHE_TTL = 24 * 60 * 60 * 1000;
+let mlBrowser = null;
+let mlContext = null;
+
+async function mlGetPlaywright() {
+  try { return require('playwright'); } catch { return null; }
+}
+
+async function mlEnsureBrowser() {
+  if (mlBrowser && mlContext) return true;
+  const pw = await mlGetPlaywright();
+  if (!pw) { console.warn('[ML] Playwright não instalado — /ml/shorten indisponível'); return false; }
+  try {
+    mlBrowser = await pw.chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    mlContext = await mlBrowser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      locale: 'pt-BR',
+      viewport: { width: 1280, height: 800 },
+    });
+    if (fs.existsSync(ML_COOKIES_FILE)) {
+      const cookies = JSON.parse(fs.readFileSync(ML_COOKIES_FILE, 'utf8'));
+      await mlContext.addCookies(cookies);
+      console.log('[ML] Cookies carregados de', ML_COOKIES_FILE);
+    } else {
+      console.warn('[ML] Nenhum cookie salvo — rode: node ml-link-server.js --login');
+    }
+    return true;
+  } catch (e) {
+    console.error('[ML] Erro ao iniciar browser:', e.message);
+    return false;
+  }
+}
+
+async function mlGenerateLink(productUrl) {
+  const cached = mlLinkCache.get(productUrl);
+  if (cached && Date.now() < cached.expiresAt) return cached.shortLink;
+
+  const ready = await mlEnsureBrowser();
+  if (!ready) throw new Error('Playwright não disponível');
+
+  const page = await mlContext.newPage();
+  try {
+    await page.goto('https://www.mercadolivre.com.br/l/afiliados-gere-seus-links', {
+      waitUntil: 'domcontentloaded', timeout: 30000,
+    });
+    const currentUrl = page.url();
+    if (currentUrl.includes('login') || currentUrl.includes('registration')) {
+      mlBrowser = null; mlContext = null;
+      throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
+    }
+    const inputSel = 'input[placeholder*="link"], input[placeholder*="URL"], input[type="url"], input[type="text"][class*="link"]';
+    await page.waitForSelector(inputSel, { timeout: 15000 });
+    await page.fill(inputSel, '');
+    await page.fill(inputSel, productUrl);
+    const btnSel = 'button[type="submit"], button:has-text("Gerar"), button:has-text("Criar link")';
+    await page.click(btnSel);
+    await page.waitForSelector('text=/meli\\.la\\//i', { timeout: 15000 });
+    const shortLink = await page.evaluate(() => {
+      const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
+      return m ? m[0] : null;
+    });
+    if (!shortLink) throw new Error('Link meli.la não encontrado na página');
+    mlLinkCache.set(productUrl, { shortLink, expiresAt: Date.now() + ML_CACHE_TTL });
+    console.log('[ML] Link gerado:', shortLink);
+    return shortLink;
+  } finally {
+    await page.close();
+  }
+}
+
 // ── Servidor HTTP ──────────────────────────────────────────────────────────────
+
+// Inicializa o browser ML em background ao subir o servidor
+mlEnsureBrowser().catch(() => {});
 
 const server = http.createServer((req, res) => {
   // CORS
@@ -1174,6 +1252,23 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: e.message, products: [] }));
       }
     })();
+    return;
+  }
+
+  // GET /ml/shorten?url=...
+  if (req.method === 'GET' && url.pathname === '/ml/shorten') {
+    const productUrl = url.searchParams.get('url');
+    if (!productUrl) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Parâmetro url obrigatório' })); return; }
+    mlGenerateLink(decodeURIComponent(productUrl))
+      .then(shortLink => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, shortLink })); })
+      .catch(err => { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: err.message })); });
+    return;
+  }
+
+  // GET /ml/status
+  if (req.method === 'GET' && url.pathname === '/ml/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, browserReady: !!(mlBrowser && mlContext), cookiesLoaded: fs.existsSync(ML_COOKIES_FILE), cacheSize: mlLinkCache.size }));
     return;
   }
 

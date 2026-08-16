@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const endpoint = `${serviceUrl.replace(/\/$/, '')}/shorten?url=${encodeURIComponent(productUrl)}`;
+    // O ml-link-server agora está integrado ao wa-server na rota /ml/shorten
+    const endpoint = `${serviceUrl.replace(/\/$/, '')}/ml/shorten?url=${encodeURIComponent(productUrl)}`;
     const res = await fetch(endpoint, { signal: AbortSignal.timeout(20000) });
     const data = await res.json() as { ok?: boolean; shortLink?: string; error?: string };
 
