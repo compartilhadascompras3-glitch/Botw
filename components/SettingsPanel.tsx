@@ -12,6 +12,7 @@ interface AppSettings {
   evolutionUrl: string;
   evolutionApiKey: string;
   evolutionInstance: string;
+  mlLinkServerUrl: string;
 }
 
 interface SettingsPanelProps {
@@ -191,6 +192,27 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
                 {`mercadolivre.com.br/p/MLB...?matt_word=${local.mattWord}${local.mattTool ? `&matt_tool=${local.mattTool}` : ''}&forceInApp=true`}
               </div>
             )}
+
+            {/* ── Link curto meli.la (ml-link-server) ── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#A0A0A0', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Link curto meli.la (opcional)
+              </label>
+              <div style={{ background: 'rgba(255,165,0,0.05)', border: '1px solid rgba(255,165,0,0.15)', borderRadius: 12, padding: '8px 12px', fontSize: 11, color: '#888', lineHeight: 1.6 }}>
+                URL do <strong style={{ color: '#FFA500' }}>ml-link-server.js</strong> rodando no seu PC (ex: via ngrok).<br />
+                Quando configurado, os links do ML no bot saem como <strong style={{ color: '#FFA500' }}>meli.la/xxxxx</strong>.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, color: '#666' }}>URL do ml-link-server (porta 3002)</span>
+                <input
+                  type="url"
+                  value={local.mlLinkServerUrl ?? ''}
+                  onChange={e => setLocal({ ...local, mlLinkServerUrl: e.target.value.trim() })}
+                  placeholder="https://xxxx.ngrok-free.app"
+                  style={{ ...inputStyle, background: 'transparent', outline: 'none', padding: '10px 12px', borderRadius: 12, fontSize: 14, width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
           </div>
 
           {/* ── Landing page de captação ── */}

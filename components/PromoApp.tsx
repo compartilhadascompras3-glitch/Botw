@@ -154,11 +154,13 @@ interface AppSettings {
   evolutionUrl: string;
   evolutionApiKey: string;
   evolutionInstance: string;
+  mlLinkServerUrl: string;
 }
 
 const EMPTY_SETTINGS: AppSettings = {
   mattWord: '', mattTool: '', webhookUrl: '', autoSend: false,
   evolutionUrl: '', evolutionApiKey: '', evolutionInstance: 'whatsapp-bot',
+  mlLinkServerUrl: '',
 };
 
 function loadSettings(): AppSettings {
@@ -175,6 +177,7 @@ function loadSettings(): AppSettings {
         evolutionUrl: (s.evolutionUrl ?? '') as string,
         evolutionApiKey: (s.evolutionApiKey ?? '') as string,
         evolutionInstance: (s.evolutionInstance ?? 'whatsapp-bot') as string,
+        mlLinkServerUrl: (s.mlLinkServerUrl ?? '') as string,
       };
     }
   } catch { /* ignore */ }
@@ -227,6 +230,9 @@ export default function PromoApp() {
   // IDs de produtos já adicionados ao bot (persiste em localStorage)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
+  // Permalinks já enviados alguma vez (vem do banco de histórico)
+  const [sentPermalinks, setSentPermalinks] = useState<Set<string>>(new Set());
+
   // Modal state
   const [modalProduct, setModalProduct] = useState<AnyProduct | null>(null);
   const [modalSaveStatus, setModalSaveStatus] = useState<'idle' | 'saving' | 'done' | 'error'>('idle');
@@ -237,6 +243,13 @@ export default function PromoApp() {
   useEffect(() => {
     setSettings(loadSettings());
     setAddedIds(loadAddedIds());
+    // Carrega permalinks já enviados do banco para marcar produtos do histórico
+    fetch('/api/history/permalinks')
+      .then((r) => r.json())
+      .then((data: { permalinks?: string[] }) => {
+        if (data.permalinks) setSentPermalinks(new Set(data.permalinks));
+      })
+      .catch(() => { /* silencioso — não bloqueia o app */ });
   }, []);
 
   // Fecha menu de sort ao clicar fora
@@ -261,6 +274,9 @@ export default function PromoApp() {
         evolutionUrl: newSettings.evolutionUrl,
         evolutionApiKey: newSettings.evolutionApiKey,
         evolutionInstance: newSettings.evolutionInstance,
+        mattWord: newSettings.mattWord,
+        mattTool: newSettings.mattTool,
+        mlLinkServerUrl: newSettings.mlLinkServerUrl,
       }),
     }).catch(() => { /* ignora falha silenciosa */ });
   };
@@ -585,6 +601,16 @@ export default function PromoApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
+  // Auto-refresh Shopee a cada 3 minutos quando a aba estiver ativa
+  useEffect(() => {
+    if (source !== 'shopee') return;
+    const id = setInterval(() => {
+      fetchShopee(query, activeCategory, minDiscount);
+    }, 3 * 60 * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, query, activeCategory, minDiscount]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const fetchCurrent = useCallback((q: string, cat: string, disc: number) => {
     if (source === 'ml') fetchML(q, cat, disc);
@@ -662,6 +688,7 @@ export default function PromoApp() {
     // Registra o produto como adicionado
     saveAddedId(product.id);
     setAddedIds((prev) => new Set([...prev, product.id]));
+    setSentPermalinks((prev) => new Set([...prev, product.permalink]));
     setBotAddedCount((c) => c + 1);
   }, [addMessage]);
 
@@ -1069,7 +1096,7 @@ export default function PromoApp() {
                   product={product}
                   accentColor={accentColor}
                   accentGrad={accentGrad}
-                  alreadyAdded={addedIds.has(product.id)}
+                  alreadyAdded={addedIds.has(product.id) || sentPermalinks.has(product.permalink)}
                   onAddToBot={handleOpenModal}
                 />
               ))}

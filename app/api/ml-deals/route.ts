@@ -154,19 +154,20 @@ async function fetchViaOfficialAPI(
   const offset = (page - 1) * limit;
   const mlSort = ML_SORT_MAP[sortKey] ?? 'relevance';
 
+  // Busca com limite maior para compensar a filtragem local de desconto
+  const fetchLimit = Math.min(limit * 3, 50);
+
   const params = new URLSearchParams({
     site_id: 'MLB',
     q: query || 'promoção oferta',
     sort: mlSort,
-    limit: String(Math.min(limit, 50)),
+    limit: String(fetchLimit),
     offset: String(offset),
     condition: 'new',
   });
 
-  // Filtros de desconto — a API aceita discount como filtro
-  if (minDiscount > 0) {
-    params.set('discount', `${minDiscount}-100`);
-  }
+  // Não usa o filtro `discount` da API — requer scope extra que gera UNAUTHORIZED.
+  // O desconto mínimo é aplicado localmente após o mapeamento.
 
   if (category) {
     params.set('category', category);
@@ -192,11 +193,13 @@ async function fetchViaOfficialAPI(
   };
 
   const results = data.results ?? [];
+  // Filtra desconto localmente — evita o scope `discount` que causava UNAUTHORIZED
   const products = results
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((item: any) => mapApiItem(item, mattWord, mattTool))
     .filter((p): p is MLProduct => p !== null)
-    .filter((p) => p.discount_percent >= minDiscount);
+    .filter((p) => p.discount_percent >= minDiscount)
+    .slice(0, limit);
 
   const totalFetched = data.paging?.total ?? 0;
   const hasMore = offset + results.length < Math.min(totalFetched, 500);
@@ -252,10 +255,21 @@ function parseScrapedProduct(item: RawItem, mattWord: string, mattTool: string):
     if (!currentPrice) return null;
     let originalPrice: number | null = null;
     let discountPercent = 0;
+
+    // Desconto via discount_polylabel (estrutura mais comum na página de ofertas)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const discPoly = (priceData as any)?.discount_polylabel;
+    if (discPoly) {
+      for (const v of (discPoly.values ?? []) as Array<{ pill?: { text: string } }>) {
+        if (v.pill?.text) { const m = v.pill.text.match(/(\d+)%/); if (m) discountPercent = parseInt(m[1], 10); }
+      }
+    }
+
+    // Preço original e desconto via price_labels (fallback)
     const priceLabels: unknown[] = priceData?.price_labels ?? [];
     for (const label of priceLabels as Array<{ values?: Array<{ type: string; key?: string; pill?: { text: string }; price?: { value: number } }> }>) {
       for (const v of label.values ?? []) {
-        if (v.type === 'pill' && v.pill?.text) {
+        if (!discountPercent && v.type === 'pill' && v.pill?.text) {
           const m = v.pill.text.match(/(\d+)%/);
           if (m) discountPercent = parseInt(m[1], 10);
         }
@@ -263,6 +277,11 @@ function parseScrapedProduct(item: RawItem, mattWord: string, mattTool: string):
           originalPrice = v.price.value;
         }
       }
+    }
+
+    // Calcula preço original a partir do desconto se não encontrou nos labels
+    if (!originalPrice && discountPercent > 0 && currentPrice > 0) {
+      originalPrice = Math.round((currentPrice / (1 - discountPercent / 100)) * 100) / 100;
     }
     const pics = card.pictures?.pictures ?? [];
     const picId = pics[0]?.id ?? '';
@@ -317,16 +336,31 @@ async function fetchViaScrapingFallback(
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
+async function getDbSetting(key: string): Promise<string> {
+  try {
+    const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).limit(1);
+    return rows[0]?.value ?? '';
+  } catch { return ''; }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const query      = searchParams.get('q') ?? '';
   const category   = searchParams.get('category') ?? '';
   const minDiscount = parseInt(searchParams.get('minDiscount') ?? '10', 10);
-  const mattWord   = searchParams.get('mattWord') ?? searchParams.get('trackingId') ?? '';
-  const mattTool   = searchParams.get('mattTool') ?? '';
   const limit      = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 50);
   const page       = parseInt(searchParams.get('page') ?? '1', 10);
   const sortKey    = searchParams.get('sort') ?? 'default';
+
+  // mattWord/mattTool: usa o que vier na query, senão busca do banco (salvo nas Settings)
+  const qMattWord = searchParams.get('mattWord') ?? searchParams.get('trackingId') ?? '';
+  const qMattTool = searchParams.get('mattTool') ?? '';
+  const [dbMattWord, dbMattTool] = await Promise.all([
+    qMattWord ? Promise.resolve(qMattWord) : getDbSetting('ml_matt_word'),
+    qMattTool ? Promise.resolve(qMattTool) : getDbSetting('ml_matt_tool'),
+  ]);
+  const mattWord = dbMattWord;
+  const mattTool = dbMattTool;
 
   try {
     const token = await getAccessToken();

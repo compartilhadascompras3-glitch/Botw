@@ -132,15 +132,21 @@ async function fetchShopeePage(page: number, limit: number, sortType: number): P
 /**
  * Busca ofertas de produtos em múltiplas páginas em paralelo.
  * sortType: 1 = comissão, 2 = recentes, 3 = mais vendidos
+ * Por padrão busca 500 produtos combinando os 3 sortTypes para máxima variedade.
  */
-export async function fetchShopeeDeals(totalWanted = 100, sortType = 2): Promise<ShopeeProduct[]> {
+export async function fetchShopeeDeals(totalWanted = 500, sortType = 2): Promise<ShopeeProduct[]> {
   const pageSize = 50; // máximo suportado pela API
-  const pages = Math.ceil(totalWanted / pageSize);
 
-  // Busca todas as páginas em paralelo
-  const results = await Promise.allSettled(
-    Array.from({ length: pages }, (_, i) => fetchShopeePage(i + 1, pageSize, sortType))
+  // Busca os 3 sortTypes em paralelo para máxima variedade de produtos
+  const sortTypes = sortType === 2 ? [1, 2, 3] : [sortType];
+  const perSort = Math.ceil(totalWanted / sortTypes.length);
+  const pages = Math.ceil(perSort / pageSize);
+
+  const allRequests = sortTypes.flatMap(st =>
+    Array.from({ length: pages }, (_, i) => fetchShopeePage(i + 1, pageSize, st))
   );
+
+  const results = await Promise.allSettled(allRequests);
 
   const all: ShopeeProduct[] = [];
   for (const r of results) {

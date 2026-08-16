@@ -5,9 +5,9 @@
 
 const API_BASE = 'https://api.promobit.com.br';
 const PHOTO_BASE = 'https://i.promobit.com.br';
-const PAGES_TO_FETCH = 10; // mais páginas para garantir produtos suficientes por loja
+const PAGES_TO_FETCH = 25; // mais páginas = mais produtos disponíveis por loja
 const PAGE_LIMIT = 100;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos — atualiza com mais frequência
 
 // IDs reais de loja na Promobit (verificados via API)
 export const STORE_ID_AMAZON   = 83;

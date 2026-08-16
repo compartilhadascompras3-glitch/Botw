@@ -63,6 +63,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
 
   // Link afiliado
   const [affiliateLink, setAffiliateLink] = useState('');
+  const [shortLinkLoading, setShortLinkLoading] = useState(false);
 
   // Save state
   const [saving, setSaving] = useState(false);
@@ -86,8 +87,23 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     setPriceEdit('');
     setOrigEdit('');
     // Preenche link de afiliado automaticamente se o permalink já for rastreado
-    const isTrackedLink = /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
-    setAffiliateLink(isTrackedLink ? product.permalink : '');
+    const isTrackedShopee = /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
+    const isTrackedML     = /matt_word=/i.test(product.permalink ?? '');
+    const initialLink = isTrackedShopee || isTrackedML ? product.permalink : '';
+    setAffiliateLink(initialLink);
+    setShortLinkLoading(false);
+
+    // Se for ML com matt_word, tenta encurtar para meli.la automaticamente
+    if (isTrackedML && product.permalink) {
+      setShortLinkLoading(true);
+      fetch(`/api/ml-short-link?url=${encodeURIComponent(product.permalink)}`)
+        .then(r => r.json())
+        .then((data: { ok?: boolean; shortLink?: string }) => {
+          if (data.ok && data.shortLink) setAffiliateLink(data.shortLink);
+        })
+        .catch(() => { /* fallback silencioso — mantém o link longo */ })
+        .finally(() => setShortLinkLoading(false));
+    }
     // Só gera automaticamente se tiver preço
     if (product.price > 0) {
       generateTexts(product, aiModel);
@@ -335,9 +351,14 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
               <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#666' }}>
                 Link de afiliado
               </p>
-              {affiliateLink && /s\.shopee\.com\.br|shp\.ee/i.test(affiliateLink) && (
+              {affiliateLink && (/s\.shopee\.com\.br|shp\.ee/i.test(affiliateLink) || /matt_word=/i.test(affiliateLink) || /meli\.la/i.test(affiliateLink)) && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.3)' }}>
                   ✓ Rastreado
+                </span>
+              )}
+              {shortLinkLoading && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,165,0,0.12)', color: '#FFA500', border: '1px solid rgba(255,165,0,0.3)' }}>
+                  ⏳ Gerando meli.la...
                 </span>
               )}
             </div>
