@@ -681,6 +681,11 @@ async function mlGenerateLink(productUrl) {
     // Aguarda a SPA carregar completamente
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
 
+    // Log de diagnóstico: URL atual e título da página
+    const pageTitle = await page.title().catch(() => '?');
+    const pageUrl2  = page.url();
+    console.log('[ML] Página carregada:', pageUrl2, '|', pageTitle);
+
     // Tenta vários seletores possíveis para o input (o ML muda com frequência)
     const inputSelectors = [
       'input[placeholder*="link"]',
