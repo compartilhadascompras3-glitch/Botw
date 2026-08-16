@@ -736,68 +736,51 @@ async function mlGenerateLink(productUrl) {
       } catch { /* ignora */ }
     }
 
-    // O hub fica em /afiliados/hub — o gerador de links é uma sub-página
-    // Constrói a URL do gerador a partir do hub
-    const hubBase = (savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub')
-      .replace(/\/hub.*$/, '');
-    const generatorUrls = [
-      hubBase + '/link-generator',
-      hubBase + '/gerador-de-links',
-      hubBase + '/hub/link-generator',
-      savedGeneratorUrl,
-    ].filter(Boolean);
+    // Vai direto para o hub e clica no menu "Gerador de Links"
+    const hubUrl = savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub?is_affiliate=true';
+    await page.goto(hubUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const cur = page.url();
+    if (cur.includes('login') || cur.includes('registration')) {
+      mlBrowser = null; mlContext = null;
+      throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
+    }
+    await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 15000 }).catch(() => {});
 
+    // Tenta clicar no menu "Gerador de Links" no sidebar
     let loaded = false;
-    for (const aUrl of generatorUrls) {
-      await page.goto(aUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-      const cur = page.url();
-      if (cur.includes('login') || cur.includes('registration')) {
-        mlBrowser = null; mlContext = null;
-        throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
-      }
-      await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 10000 }).catch(() => {});
-      const inputCount = await page.evaluate(() => document.querySelectorAll('input').length);
-      // Verifica se tem o campo específico do gerador (placeholder "Insira" ou "Cole")
-      const hasGeneratorInput = await page.evaluate(() => {
-        const inputs = Array.from(document.querySelectorAll('input'));
-        return inputs.some(i =>
-          i.placeholder.includes('Insira') ||
-          i.placeholder.includes('Cole') ||
-          i.placeholder.includes('link') ||
-          i.placeholder.includes('URL') ||
-          i.type === 'url'
+    const menuSelectors = [
+      'a[href*="link-generator"]',
+      'a[href*="gerador"]',
+      'a:has-text("Gerador de links")',
+      'a:has-text("Gerar link")',
+      'a:has-text("Link generator")',
+    ];
+    for (const sel of menuSelectors) {
+      try {
+        const el = await page.$(sel);
+        if (!el) continue;
+        const href = await el.getAttribute('href');
+        console.log('[ML] Clicando menu:', sel, href);
+        await el.click();
+        await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
+        const hasGen = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('input')).some(i =>
+            i.placeholder.includes('Insira') || i.placeholder.includes('Cole') ||
+            i.placeholder.includes('link') || i.type === 'url'
+          )
         );
-      });
-      console.log('[ML] URL tentada:', cur, '| inputs:', inputCount, '| temGerador:', hasGeneratorInput);
-      if (hasGeneratorInput) { loaded = true; break; }
+        if (hasGen) { loaded = true; break; }
+      } catch { /* continua */ }
     }
 
-    // Se não achou o gerador nas sub-páginas, tenta clicar no menu "Gerador de Links" do hub
+    // Se não clicou em nada, lista todos os links do menu para diagnóstico
     if (!loaded) {
-      const hubUrl = (savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub?is_affiliate=true');
-      await page.goto(hubUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-      await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 10000 }).catch(() => {});
-      // Tenta clicar no link "Gerador de Links" ou "Gerar link" no menu lateral
-      const menuSelectors = [
-        'a:has-text("Gerador de links")',
-        'a:has-text("Gerar link")',
-        'a:has-text("Link generator")',
-        'a[href*="link-generator"]',
-        'a[href*="gerador"]',
-        'nav a:nth-child(2)',
-      ];
-      for (const sel of menuSelectors) {
-        try {
-          await page.click(sel, { timeout: 3000 });
-          await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
-          const hasGen = await page.evaluate(() =>
-            Array.from(document.querySelectorAll('input')).some(i =>
-              i.placeholder.includes('Insira') || i.placeholder.includes('Cole') || i.placeholder.includes('link') || i.type === 'url'
-            )
-          );
-          if (hasGen) { loaded = true; break; }
-        } catch { /* continua */ }
-      }
+      const allLinks = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('a[href*="afiliados"], nav a, aside a'))
+          .map(a => ({ text: a.textContent?.trim().slice(0,40), href: a.getAttribute('href') }))
+          .slice(0, 15)
+      );
+      console.log('[ML] Links do menu:', JSON.stringify(allLinks));
     }
 
     const allInputs = await page.evaluate(() =>
