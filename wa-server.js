@@ -727,22 +727,28 @@ async function mlGenerateLink(productUrl) {
 
   const page = await mlContext.newPage();
   try {
-    await page.goto('https://www.mercadolivre.com.br/l/afiliados-gere-seus-links', {
-      waitUntil: 'domcontentloaded', timeout: 30000,
-    });
-    const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('registration')) {
-      mlBrowser = null; mlContext = null;
-      throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
+    // Tenta a URL correta do portal de afiliados (o gerador fica dentro do portal logado)
+    const affiliateUrls = [
+      'https://www.mercadolivre.com.br/afiliados/gerador-de-links',
+      'https://www.mercadolivre.com.br/afiliados',
+      'https://www.mercadolivre.com.br/l/afiliados-gere-seus-links',
+    ];
+    let loaded = false;
+    for (const aUrl of affiliateUrls) {
+      await page.goto(aUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+      const cur = page.url();
+      if (cur.includes('login') || cur.includes('registration')) {
+        mlBrowser = null; mlContext = null;
+        throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
+      }
+      // Aguarda o formulário (mais de 2 inputs = SPA carregou)
+      await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 10000 }).catch(() => {});
+      const inputCount = await page.evaluate(() => document.querySelectorAll('input').length);
+      console.log('[ML] URL tentada:', cur, '| inputs:', inputCount);
+      if (inputCount > 2) { loaded = true; break; }
     }
-    // Aguarda o formulário real da SPA carregar (não só o shell do ML)
-    // O formulário fica num iframe ou num container específico — espera até 25s
-    await page.waitForFunction(
-      () => document.querySelectorAll('input').length > 2,
-      { timeout: 25000 }
-    ).catch(() => {});
 
-    console.log('[ML] Playwright — página:', page.url(), '|', await page.title().catch(() => '?'));
+    console.log('[ML] Playwright — página:', page.url(), '|', await page.title().catch(() => '?'), '| formulário carregou:', loaded);
     const allInputs = await page.evaluate(() =>
       Array.from(document.querySelectorAll('input')).map(i => ({
         type: i.type, placeholder: i.placeholder, id: i.id, className: i.className.substring(0, 60),
