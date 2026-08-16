@@ -79,7 +79,8 @@ async function saveCookies() {
 
 async function doLoginFlow() {
   console.log('🔑  Modo login — abrindo browser visível...');
-  console.log('    Faça login na sua conta do Mercado Livre e depois FECHE a janela.');
+  console.log('    Faça login na sua conta do Mercado Livre.');
+  console.log('    Quando terminar, volte aqui e pressione ENTER.\n');
 
   await launchBrowser(false); // visível
   const page = await context.newPage();
@@ -88,12 +89,17 @@ async function doLoginFlow() {
     timeout: 60000,
   });
 
-  // Espera o usuário fechar o browser manualmente
-  await new Promise((resolve) => browser.on('disconnected', resolve));
-  // browser já foi fechado pelo usuário — salva cookies antes de sair
-  try {
-    await saveCookies();
-  } catch { /* browser já fechado */ }
+  // Espera o usuário pressionar ENTER — muito mais confiável do que detectar fechamento
+  process.stdout.write('    [Pressione ENTER após fazer login] ');
+  await new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.once('data', resolve);
+  });
+  process.stdin.pause();
+
+  await saveCookies();
+  await browser.close();
   console.log('✅  Cookies salvos! Agora rode: node ml-link-server.js');
   process.exit(0);
 }
