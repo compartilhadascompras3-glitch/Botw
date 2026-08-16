@@ -105,14 +105,11 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
         .then((data: { ok?: boolean; shortLink?: string }) => {
           if (data.ok && data.shortLink) {
             setAffiliateLink(data.shortLink);
-          } else {
-            // Falhou — usa o link longo como fallback
-            setAffiliateLink(product.permalink ?? '');
           }
+          // se falhou, mantém vazio — usuário pode colar o link manualmente
         })
         .catch(() => {
-          // Timeout ou erro — usa o link longo como fallback
-          setAffiliateLink(product.permalink ?? '');
+          // Timeout ou erro — mantém vazio
         })
         .finally(() => setShortLinkLoading(false));
     }
