@@ -736,7 +736,7 @@ async function mlGenerateLink(productUrl) {
       } catch { /* ignora */ }
     }
 
-    // Vai direto para o hub e clica no menu "Gerador de Links"
+    // Vai direto para o hub (onde o gerador já está embutido)
     const hubUrl = savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub?is_affiliate=true';
     await page.goto(hubUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     const cur = page.url();
@@ -744,96 +744,48 @@ async function mlGenerateLink(productUrl) {
       mlBrowser = null; mlContext = null;
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
-    await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 15000 }).catch(() => {});
+    // Aguarda o campo "Busque produtos" (andes-form-control__field) aparecer
+    await page.waitForSelector('input.andes-form-control__field', { timeout: 20000 });
+    console.log('[ML] Hub carregado:', page.url());
 
-    // Tenta clicar no menu "Gerador de Links" no sidebar
-    let loaded = false;
-    const menuSelectors = [
-      'a[href*="link-generator"]',
-      'a[href*="gerador"]',
-      'a:has-text("Gerador de links")',
-      'a:has-text("Gerar link")',
-      'a:has-text("Link generator")',
-    ];
-    for (const sel of menuSelectors) {
-      try {
-        const el = await page.$(sel);
-        if (!el) continue;
-        const href = await el.getAttribute('href');
-        console.log('[ML] Clicando menu:', sel, href);
-        await el.click();
-        await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
-        const hasGen = await page.evaluate(() =>
-          Array.from(document.querySelectorAll('input')).some(i =>
-            i.placeholder.includes('Insira') || i.placeholder.includes('Cole') ||
-            i.placeholder.includes('link') || i.type === 'url'
-          )
-        );
-        if (hasGen) { loaded = true; break; }
-      } catch { /* continua */ }
-    }
+    // O campo do gerador é o input.andes-form-control__field (placeholder "Busque produtos")
+    // Limpa, digita a URL e clica em algum botão de pesquisa/gerar
+    await page.fill('input.andes-form-control__field', trackedUrl);
 
-    // Se não clicou em nada, lista todos os links do menu para diagnóstico
-    if (!loaded) {
-      const allLinks = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('a[href*="afiliados"], nav a, aside a'))
-          .map(a => ({ text: a.textContent?.trim().slice(0,40), href: a.getAttribute('href') }))
-          .slice(0, 15)
-      );
-      console.log('[ML] Links do menu:', JSON.stringify(allLinks));
-    }
-
-    const allInputs = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('input')).map(i => ({
-        type: i.type, placeholder: i.placeholder, id: i.id, className: i.className.substring(0, 60),
-      }))
-    );
-    console.log('[ML] Página final:', page.url(), '| inputs:', JSON.stringify(allInputs));
-
-    // Seletores do gerador — inclui o seletor específico do portal ML (andes-form-control)
-    const inputSelectors = [
-      'input[placeholder*="Insira"]',
-      'input[placeholder*="Cole"]',
-      'input[placeholder*="link"]',
-      'input[placeholder*="URL"]',
-      'input[placeholder*="url"]',
-      'input[type="url"]',
-      '.andes-form-control__field[type="text"]',
-      'input[class*="andes-form-control__field"]',
-      'input[data-testid*="input"]',
-      'form input[type="text"]:not([id="cb1-edit"])',
-    ];
-    let inputHandle = null;
-    for (const sel of inputSelectors) {
-      try {
-        await page.waitForSelector(sel, { timeout: 2000 });
-        // Confirma que não é a barra de busca do header
-        const isValid = await page.evaluate((s) => {
-          const el = document.querySelector(s);
-          return el && el.id !== 'cb1-edit' && !el.className.includes('nav-search');
-        }, sel);
-        if (isValid) { inputHandle = sel; break; }
-      } catch { /* continua */ }
-    }
-    if (!inputHandle) throw new Error('Input do gerador não encontrado. URL: ' + page.url() + ' Inputs: ' + JSON.stringify(allInputs.slice(0,8)));
-
-    await page.fill(inputHandle, trackedUrl);
+    // Tenta pressionar Enter ou clicar no botão de busca/gerar
     const btnSelectors = [
       'button:has-text("Gerar link")',
       'button:has-text("Gerar")',
-      'button:has-text("Criar link")',
-      'button:has-text("Encurtar")',
+      'button:has-text("Buscar")',
       'button[type="submit"]',
       'form button',
+      'button[class*="andes"]',
     ];
+    let clicked = false;
     for (const sel of btnSelectors) {
-      try { await page.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
+      try {
+        await page.click(sel, { timeout: 2000 });
+        clicked = true;
+        console.log('[ML] Botão clicado:', sel);
+        break;
+      } catch { /* continua */ }
     }
-    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 15000 });
+    if (!clicked) {
+      // Tenta pressionar Enter no campo
+      await page.press('input.andes-form-control__field', 'Enter');
+      console.log('[ML] Enter pressionado no campo');
+    }
+
+    // Aguarda resultado — link meli.la ou input readonly com resultado
+    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 20000 });
+    console.log('[ML] Link meli.la detectado na página');
+
     const shortLink = await page.evaluate(() => {
+      // Procura em inputs readonly (campo de resultado)
       for (const inp of document.querySelectorAll('input[readonly],input[class*="result"],input[class*="output"]')) {
         const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/); if (m) return m[0];
       }
+      // Procura no texto da página
       const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
       return m ? m[0] : null;
     });
