@@ -735,10 +735,14 @@ async function mlGenerateLink(productUrl) {
       mlBrowser = null; mlContext = null;
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
-    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    console.log('[ML] Playwright — página:', page.url(), '|', await page.title().catch(() => '?'));
+    // Aguarda o formulário real da SPA carregar (não só o shell do ML)
+    // O formulário fica num iframe ou num container específico — espera até 25s
+    await page.waitForFunction(
+      () => document.querySelectorAll('input').length > 2,
+      { timeout: 25000 }
+    ).catch(() => {});
 
-    // Dump de todos os inputs para diagnóstico
+    console.log('[ML] Playwright — página:', page.url(), '|', await page.title().catch(() => '?'));
     const allInputs = await page.evaluate(() =>
       Array.from(document.querySelectorAll('input')).map(i => ({
         type: i.type, placeholder: i.placeholder, id: i.id, className: i.className.substring(0, 60),
@@ -746,34 +750,38 @@ async function mlGenerateLink(productUrl) {
     );
     console.log('[ML] Inputs na página:', JSON.stringify(allInputs));
 
+    // Verifica se há iframes com o formulário
+    const frames = page.frames();
+    console.log('[ML] Frames na página:', frames.map(f => f.url()));
+
+    // Tenta encontrar o input em todos os frames (principal + iframes)
+    let inputHandle = null;
+    let targetFrame = page;
     const inputSelectors = [
       'input[placeholder*="link"]','input[placeholder*="URL"]','input[placeholder*="url"]',
       'input[placeholder*="Cole"]','input[placeholder*="Insira"]','input[type="url"]',
       'input[data-testid*="input"]','input[class*="link"]','input[class*="url"]',
       'input[class*="input"]','.link-generator input','.affiliate input','form input[type="text"]',
     ];
-    let inputHandle = null;
-    for (const sel of inputSelectors) {
-      try { await page.waitForSelector(sel, { timeout: 2000 }); inputHandle = sel; break; }
-      catch { /* continua */ }
+    for (const frame of frames) {
+      for (const sel of inputSelectors) {
+        try {
+          await frame.waitForSelector(sel, { timeout: 1500 });
+          inputHandle = sel;
+          targetFrame = frame;
+          break;
+        } catch { /* continua */ }
+      }
+      if (inputHandle) break;
     }
-    if (!inputHandle) {
-      const firstId = await page.evaluate(() => {
-        const v = Array.from(document.querySelectorAll('input[type="text"],input:not([type])')).find(el => {
-          const r = el.getBoundingClientRect(); return r.width > 100 && r.height > 0;
-        });
-        return v?.id ? `#${v.id}` : null;
-      });
-      if (firstId) inputHandle = firstId;
-    }
-    if (!inputHandle) throw new Error('Input não encontrado mesmo com Playwright');
+    if (!inputHandle) throw new Error('Input não encontrado — a página de afiliados pode ter mudado. Inputs vistos: ' + JSON.stringify(allInputs.slice(0,5)));
 
-    await page.fill(inputHandle, trackedUrl);
+    await targetFrame.fill(inputHandle, trackedUrl);
     const btnSelectors = ['button[type="submit"]','button:has-text("Gerar")','button:has-text("Criar link")','button:has-text("Encurtar")','form button'];
     for (const sel of btnSelectors) {
-      try { await page.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
+      try { await targetFrame.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
     }
-    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 15000 });
+    await targetFrame.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 15000 });
     const shortLink = await page.evaluate(() => {
       for (const inp of document.querySelectorAll('input[readonly],input[class*="result"]')) {
         const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/); if (m) return m[0];
