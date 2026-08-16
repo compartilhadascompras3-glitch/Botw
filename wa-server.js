@@ -664,8 +664,66 @@ async function mlGenerateLink(productUrl) {
   const cached = mlLinkCache.get(productUrl);
   if (cached && Date.now() < cached.expiresAt) return cached.shortLink;
 
+  // ── Tenta a API REST do ML Afiliados (sem Playwright) ──────────────────────
+  // Lê matt_word e matt_tool salvos no banco via NEXT_API
+  let mattWord = 'eclash62';
+  let mattTool = '51647683';
+  try {
+    const nextApi = process.env.NEXT_API_URL || process.env.NEXT_API || 'http://localhost:13000';
+    const settingsRes = await fetch(`${nextApi}/api/settings`, { signal: AbortSignal.timeout(5000) });
+    if (settingsRes.ok) {
+      const s = await settingsRes.json();
+      if (s.mattWord) mattWord = s.mattWord;
+      if (s.mattTool) mattTool = s.mattTool;
+    }
+  } catch { /* usa defaults */ }
+
+  // Garante que a URL de produto já tem os parâmetros de rastreamento
+  let trackedUrl = productUrl;
+  try {
+    const u = new URL(productUrl);
+    if (!u.searchParams.has('matt_word')) u.searchParams.set('matt_word', mattWord);
+    if (!u.searchParams.has('matt_tool')) u.searchParams.set('matt_tool', mattTool);
+    trackedUrl = u.toString();
+  } catch { /* usa URL original */ }
+
+  // Chama a API de encurtamento do ML afiliados
+  try {
+    const apiUrl = `https://api.mercadolibre.com/link-shortener/shorten`;
+    const body = JSON.stringify({ url: trackedUrl });
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Origin': 'https://www.mercadolivre.com.br',
+      'Referer': 'https://www.mercadolivre.com.br/',
+    };
+    // Carrega cookies de sessão para autenticar
+    const cookieHeader = fs.existsSync(ML_COOKIES_FILE)
+      ? JSON.parse(fs.readFileSync(ML_COOKIES_FILE, 'utf8'))
+          .filter(c => c.domain && c.domain.includes('mercadolivre'))
+          .map(c => `${c.name}=${c.value}`)
+          .join('; ')
+      : '';
+    if (cookieHeader) headers['Cookie'] = cookieHeader;
+
+    const r = await fetch(apiUrl, { method: 'POST', headers, body, signal: AbortSignal.timeout(10000) });
+    if (r.ok) {
+      const data = await r.json();
+      const shortLink = data.short_url || data.shortUrl || data.url || data.link;
+      if (shortLink && shortLink.includes('meli.la')) {
+        mlLinkCache.set(productUrl, { shortLink, expiresAt: Date.now() + ML_CACHE_TTL });
+        console.log('[ML] Link gerado via API:', shortLink);
+        return shortLink;
+      }
+    }
+    console.warn('[ML] API REST retornou:', r.status, await r.text().catch(() => ''));
+  } catch (e) {
+    console.warn('[ML] API REST falhou:', e.message);
+  }
+
+  // ── Fallback: Playwright (portal web) ─────────────────────────────────────
   const ready = await mlEnsureBrowser();
-  if (!ready) throw new Error('Playwright não disponível');
+  if (!ready) throw new Error('Playwright não disponível e API REST falhou');
 
   const page = await mlContext.newPage();
   try {
@@ -677,110 +735,55 @@ async function mlGenerateLink(productUrl) {
       mlBrowser = null; mlContext = null;
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
-
-    // Aguarda a SPA carregar completamente
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+    console.log('[ML] Playwright — página:', page.url(), '|', await page.title().catch(() => '?'));
 
-    // Log de diagnóstico: URL atual e título da página
-    const pageTitle = await page.title().catch(() => '?');
-    const pageUrl2  = page.url();
-    console.log('[ML] Página carregada:', pageUrl2, '|', pageTitle);
+    // Dump de todos os inputs para diagnóstico
+    const allInputs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('input')).map(i => ({
+        type: i.type, placeholder: i.placeholder, id: i.id, className: i.className.substring(0, 60),
+      }))
+    );
+    console.log('[ML] Inputs na página:', JSON.stringify(allInputs));
 
-    // Tenta vários seletores possíveis para o input (o ML muda com frequência)
     const inputSelectors = [
-      'input[placeholder*="link"]',
-      'input[placeholder*="URL"]',
-      'input[placeholder*="url"]',
-      'input[placeholder*="Cole"]',
-      'input[placeholder*="Insira"]',
-      'input[type="url"]',
-      'input[data-testid*="input"]',
-      'input[class*="link"]',
-      'input[class*="url"]',
-      'input[class*="input"]',
-      '.link-generator input',
-      '.affiliate input',
-      'form input[type="text"]',
+      'input[placeholder*="link"]','input[placeholder*="URL"]','input[placeholder*="url"]',
+      'input[placeholder*="Cole"]','input[placeholder*="Insira"]','input[type="url"]',
+      'input[data-testid*="input"]','input[class*="link"]','input[class*="url"]',
+      'input[class*="input"]','.link-generator input','.affiliate input','form input[type="text"]',
     ];
-
     let inputHandle = null;
     for (const sel of inputSelectors) {
-      try {
-        await page.waitForSelector(sel, { timeout: 3000 });
-        inputHandle = sel;
-        break;
-      } catch { /* tenta o próximo */ }
+      try { await page.waitForSelector(sel, { timeout: 2000 }); inputHandle = sel; break; }
+      catch { /* continua */ }
     }
-
     if (!inputHandle) {
-      // Último recurso: pega o primeiro input de texto visível na página
-      const visible = await page.evaluate(() => {
-        const inputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
-        const v = inputs.find(el => {
-          const r = el.getBoundingClientRect();
-          return r.width > 100 && r.height > 0;
+      const firstId = await page.evaluate(() => {
+        const v = Array.from(document.querySelectorAll('input[type="text"],input:not([type])')).find(el => {
+          const r = el.getBoundingClientRect(); return r.width > 100 && r.height > 0;
         });
-        if (!v) return null;
-        // Gera um seletor único pelo id ou pela posição no DOM
-        return v.id ? `#${v.id}` : null;
+        return v?.id ? `#${v.id}` : null;
       });
-      if (visible) inputHandle = visible;
+      if (firstId) inputHandle = firstId;
     }
+    if (!inputHandle) throw new Error('Input não encontrado mesmo com Playwright');
 
-    if (!inputHandle) throw new Error('Input do portal de afiliados não encontrado — o ML pode ter mudado o layout');
-
-    await page.fill(inputHandle, '');
-    await page.fill(inputHandle, productUrl);
-
-    // Tenta vários seletores para o botão "Gerar"
-    const btnSelectors = [
-      'button[type="submit"]',
-      'button:has-text("Gerar")',
-      'button:has-text("Criar link")',
-      'button:has-text("Encurtar")',
-      'button:has-text("Gerar link")',
-      '[data-testid*="submit"]',
-      '[data-testid*="generate"]',
-      'form button',
-    ];
-    let clicked = false;
+    await page.fill(inputHandle, trackedUrl);
+    const btnSelectors = ['button[type="submit"]','button:has-text("Gerar")','button:has-text("Criar link")','button:has-text("Encurtar")','form button'];
     for (const sel of btnSelectors) {
-      try {
-        await page.click(sel, { timeout: 3000 });
-        clicked = true;
-        break;
-      } catch { /* tenta o próximo */ }
+      try { await page.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
     }
-    if (!clicked) throw new Error('Botão de gerar link não encontrado');
-
-    // Aguarda o link aparecer — tenta tanto o seletor de texto quanto qualquer link meli.la
-    try {
-      await page.waitForSelector('text=/meli\\.la\\//i', { timeout: 15000 });
-    } catch {
-      // Verifica se o link aparece em algum input de resultado
-      await page.waitForFunction(
-        () => document.body.innerText.includes('meli.la/'),
-        { timeout: 15000 }
-      );
-    }
-
+    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 15000 });
     const shortLink = await page.evaluate(() => {
-      // Procura em inputs de resultado, links e texto da página
-      const inputs = Array.from(document.querySelectorAll('input[readonly], input[class*="result"], input[class*="output"]'));
-      for (const inp of inputs) {
-        const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
-        if (m) return m[0];
+      for (const inp of document.querySelectorAll('input[readonly],input[class*="result"]')) {
+        const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/); if (m) return m[0];
       }
       const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
       return m ? m[0] : null;
     });
-    if (!shortLink) {
-      const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
-      console.error('[ML] Página após gerar:', bodyText);
-      throw new Error('Link meli.la não encontrado na página');
-    }
+    if (!shortLink) throw new Error('Link meli.la não encontrado na página');
     mlLinkCache.set(productUrl, { shortLink, expiresAt: Date.now() + ML_CACHE_TTL });
-    console.log('[ML] Link gerado:', shortLink);
+    console.log('[ML] Link gerado via Playwright:', shortLink);
     return shortLink;
   } finally {
     await page.close();
