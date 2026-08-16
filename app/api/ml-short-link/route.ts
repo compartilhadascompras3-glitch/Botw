@@ -1,10 +1,9 @@
 /**
  * GET /api/ml-short-link?url=<produto-url>
  *
- * Chama o ml-link-server.js rodando no PC do usuário (exposto via ngrok ou local)
- * e retorna o link curto meli.la gerado pelo portal de afiliados do ML.
- *
- * A URL do serviço local é salva no banco via POST /api/settings { mlLinkServerUrl }.
+ * Usa sistema assíncrono de jobs:
+ * 1. POST /ml/shorten → recebe jobId imediatamente
+ * 2. Faz polling em GET /ml/job/:id até status=done ou error
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -38,23 +37,45 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  try {
-    // O ml-link-server agora está integrado ao wa-server na rota /ml/shorten
-    const endpoint = `${serviceUrl.replace(/\/$/, '')}/ml/shorten?url=${encodeURIComponent(productUrl)}`;
-    const res = await fetch(endpoint, { signal: AbortSignal.timeout(20000) });
-    const data = await res.json() as { ok?: boolean; shortLink?: string; error?: string };
+  const base = serviceUrl.replace(/\/$/, '');
 
-    if (!res.ok || !data.ok || !data.shortLink) {
-      return NextResponse.json(
-        { error: data.error ?? 'Falha ao gerar link' },
-        { status: 502 }
-      );
+  try {
+    // 1. Inicia o job (retorna imediatamente com jobId)
+    const startRes = await fetch(`${base}/ml/shorten`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: productUrl }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const startData = await startRes.json() as { ok?: boolean; jobId?: string; error?: string };
+    if (!startData.ok || !startData.jobId) {
+      return NextResponse.json({ error: startData.error ?? 'Falha ao iniciar job' }, { status: 502 });
     }
 
-    return NextResponse.json({ ok: true, shortLink: data.shortLink });
+    const jobId = startData.jobId;
+
+    // 2. Polling: tenta a cada 3s por até 90s
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000));
+      const pollRes = await fetch(`${base}/ml/job/${jobId}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const job = await pollRes.json() as { status: string; shortLink?: string; error?: string };
+      if (job.status === 'done' && job.shortLink) {
+        return NextResponse.json({ ok: true, shortLink: job.shortLink });
+      }
+      if (job.status === 'error') {
+        return NextResponse.json({ error: job.error ?? 'Erro ao gerar link' }, { status: 502 });
+      }
+      // status === 'pending' → continua polling
+    }
+
+    return NextResponse.json({ error: 'Timeout: o Playwright demorou mais de 90s' }, { status: 504 });
+
   } catch (err) {
     return NextResponse.json(
-      { error: `Não foi possível conectar ao ml-link-server: ${String(err)}` },
+      { error: `Não foi possível conectar ao wa-server: ${String(err)}` },
       { status: 503 }
     );
   }

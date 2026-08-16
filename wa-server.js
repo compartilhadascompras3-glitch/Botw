@@ -627,6 +627,7 @@ function getSchedulerState() {
 
 const ML_COOKIES_FILE = path.join(__dirname, 'ml-cookies.json');
 const mlLinkCache = new Map();
+const mlJobs = new Map(); // jobId → { status, shortLink?, error?, productUrl, createdAt }
 const ML_CACHE_TTL = 24 * 60 * 60 * 1000;
 let mlBrowser = null;
 let mlContext = null;
@@ -1387,20 +1388,54 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /ml/shorten?url=...
+  // POST /ml/shorten  – inicia job assíncrono, retorna jobId imediatamente
+  if (req.method === 'POST' && url.pathname === '/ml/shorten') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      let productUrl = '';
+      try { productUrl = JSON.parse(body).url || ''; } catch { productUrl = new URLSearchParams(body).get('url') || ''; }
+      if (!productUrl) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Parâmetro url obrigatório' })); return; }
+      const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      mlJobs.set(jobId, { status: 'pending', productUrl, createdAt: Date.now() });
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, jobId }));
+      // Processa em background
+      mlGenerateLink(decodeURIComponent(productUrl))
+        .then(shortLink => { mlJobs.set(jobId, { status: 'done', shortLink, productUrl, createdAt: Date.now() }); console.log('[ML] Job', jobId, 'concluído:', shortLink); })
+        .catch(err  => { mlJobs.set(jobId, { status: 'error', error: err.message, productUrl, createdAt: Date.now() }); console.error('[ML] Job', jobId, 'erro:', err.message); });
+    });
+    return;
+  }
+
+  // GET /ml/shorten?url=... (compatibilidade retroativa — também usa jobs)
   if (req.method === 'GET' && url.pathname === '/ml/shorten') {
     const productUrl = url.searchParams.get('url');
     if (!productUrl) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Parâmetro url obrigatório' })); return; }
+    const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    mlJobs.set(jobId, { status: 'pending', productUrl, createdAt: Date.now() });
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, jobId, message: 'Use GET /ml/job/' + jobId + ' para buscar o resultado' }));
     mlGenerateLink(decodeURIComponent(productUrl))
-      .then(shortLink => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, shortLink })); })
-      .catch(err => { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: err.message })); });
+      .then(shortLink => { mlJobs.set(jobId, { status: 'done', shortLink, productUrl, createdAt: Date.now() }); })
+      .catch(err  => { mlJobs.set(jobId, { status: 'error', error: err.message, productUrl, createdAt: Date.now() }); });
+    return;
+  }
+
+  // GET /ml/job/:id  – consulta resultado do job
+  if (req.method === 'GET' && url.pathname.startsWith('/ml/job/')) {
+    const jobId = url.pathname.replace('/ml/job/', '');
+    const job = mlJobs.get(jobId);
+    if (!job) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Job não encontrado' })); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(job));
     return;
   }
 
   // GET /ml/status
   if (req.method === 'GET' && url.pathname === '/ml/status') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, browserReady: !!(mlBrowser && mlContext), cookiesLoaded: fs.existsSync(ML_COOKIES_FILE), cacheSize: mlLinkCache.size }));
+    res.end(JSON.stringify({ ok: true, browserReady: !!(mlBrowser && mlContext), cookiesLoaded: fs.existsSync(ML_COOKIES_FILE), cacheSize: mlLinkCache.size, pendingJobs: [...mlJobs.values()].filter(j => j.status === 'pending').length }));
     return;
   }
 
