@@ -745,48 +745,78 @@ async function mlGenerateLink(productUrl) {
       mlBrowser = null; mlContext = null;
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
-    // Aguarda o campo "Busque produtos" (andes-form-control__field) aparecer
+
+    // Aguarda o campo "Busque produtos" aparecer
     await page.waitForSelector('input.andes-form-control__field', { timeout: 20000 });
     console.log('[ML] Hub carregado:', page.url());
 
-    // O campo do gerador é o input.andes-form-control__field (placeholder "Busque produtos")
-    // Limpa, digita a URL e clica em algum botão de pesquisa/gerar
-    await page.fill('input.andes-form-control__field', trackedUrl);
+    // Extrai o MLB ID da URL do produto para buscar no portal
+    const mlbMatch = trackedUrl.match(/MLB[- ]?(\d+)/i);
+    const mlbId = mlbMatch ? 'MLB' + mlbMatch[1] : null;
+    // Também tenta pegar o título via URL (fallback)
+    const urlForSearch = mlbId || trackedUrl.split('?')[0].split('/').filter(Boolean).pop() || '';
 
-    // Tenta pressionar Enter ou clicar no botão de busca/gerar
-    const btnSelectors = [
-      'button:has-text("Gerar link")',
-      'button:has-text("Gerar")',
-      'button:has-text("Buscar")',
-      'button[type="submit"]',
-      'form button',
-      'button[class*="andes"]',
+    // Usa a ferramenta "Links de afiliados" — clicar nela abre o gerador direto
+    const toolSelectors = [
+      'a:has-text("Links de afiliados")',
+      'a[href*="link"]',
+      'button:has-text("Links de afiliados")',
+      '[title*="Links de afiliados"]',
+      'img[alt*="Links de afiliados"]',
     ];
-    let clicked = false;
-    for (const sel of btnSelectors) {
+    let toolClicked = false;
+    for (const sel of toolSelectors) {
       try {
-        await page.click(sel, { timeout: 2000 });
-        clicked = true;
-        console.log('[ML] Botão clicado:', sel);
-        break;
+        const el = await page.$(sel);
+        if (el) {
+          await el.click();
+          await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
+          toolClicked = true;
+          console.log('[ML] Ferramenta "Links de afiliados" clicada');
+          break;
+        }
       } catch { /* continua */ }
     }
-    if (!clicked) {
+
+    // Verifica se abriu um input de URL (o gerador de links)
+    const hasUrlInput = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('input')).some(i =>
+        i.type === 'url' || i.placeholder.toLowerCase().includes('url') ||
+        i.placeholder.toLowerCase().includes('insira') || i.placeholder.toLowerCase().includes('cole')
+      )
+    );
+
+    if (hasUrlInput) {
+      // Gerador de URL — digita a URL rastreada e clica em Gerar
+      const urlInputSel = 'input[type="url"], input[placeholder*="URL"], input[placeholder*="url"], input[placeholder*="Insira"], input[placeholder*="Cole"]';
+      await page.fill(urlInputSel, trackedUrl);
+      const btnSelectors = ['button:has-text("Gerar")', 'button:has-text("Criar")', 'button[type="submit"]', 'form button'];
+      for (const sel of btnSelectors) {
+        try { await page.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
+      }
+    } else {
+      // Modo "Compartilhar" — busca o produto por MLB ID e clica em Compartilhar
+      console.log('[ML] Modo Compartilhar — buscando produto:', urlForSearch);
+      await page.fill('input.andes-form-control__field', urlForSearch);
       await page.press('input.andes-form-control__field', 'Enter');
-      console.log('[ML] Enter pressionado no campo');
+      await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
+      // Clica no primeiro botão "Compartilhar" da lista
+      const shareBtn = await page.$('button:has-text("Compartilhar")');
+      if (shareBtn) {
+        await shareBtn.click();
+        console.log('[ML] Botão Compartilhar clicado');
+      } else {
+        console.warn('[ML] Botão Compartilhar não encontrado');
+      }
     }
 
     // Salva screenshot logo após clicar para diagnóstico
     const ssPath = require('path').join(__dirname, 'ml-debug.png');
-    await new Promise(r => setTimeout(r, 3000)); // aguarda 3s para a página reagir
+    await new Promise(r => setTimeout(r, 3000));
     await page.screenshot({ path: ssPath, fullPage: false }).catch(() => {});
     const pageText = await page.evaluate(() => document.body.innerText.substring(0, 800));
-    const allBtns = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().slice(0, 30))
-    );
     console.log('[ML] Screenshot salvo:', ssPath);
     console.log('[ML] Texto pós-clique:', pageText.replace(/\n+/g, ' ').slice(0, 400));
-    console.log('[ML] Botões:', JSON.stringify(allBtns.slice(0, 12)));
 
     // Aguarda resultado — link meli.la ou input readonly com resultado
     // Espera 20s pelo meli.la; se não aparecer, salva screenshot e lista texto da página
