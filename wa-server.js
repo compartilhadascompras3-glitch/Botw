@@ -733,73 +733,122 @@ async function mlGenerateLink(productUrl) {
     if (fs.existsSync(generatorUrlFile)) {
       try {
         savedGeneratorUrl = JSON.parse(fs.readFileSync(generatorUrlFile, 'utf8')).generatorUrl;
-        console.log('[ML] URL do gerador (salva):', savedGeneratorUrl);
       } catch { /* ignora */ }
     }
 
-    // Tenta a URL correta do portal de afiliados (o gerador fica dentro do portal logado)
-    const affiliateUrls = [
+    // O hub fica em /afiliados/hub — o gerador de links é uma sub-página
+    // Constrói a URL do gerador a partir do hub
+    const hubBase = (savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub')
+      .replace(/\/hub.*$/, '');
+    const generatorUrls = [
+      hubBase + '/link-generator',
+      hubBase + '/gerador-de-links',
+      hubBase + '/hub/link-generator',
       savedGeneratorUrl,
-      'https://www.mercadolivre.com.br/afiliados/gerador-de-links',
-      'https://www.mercadolivre.com.br/afiliados',
     ].filter(Boolean);
+
     let loaded = false;
-    for (const aUrl of affiliateUrls) {
+    for (const aUrl of generatorUrls) {
       await page.goto(aUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
       const cur = page.url();
       if (cur.includes('login') || cur.includes('registration')) {
         mlBrowser = null; mlContext = null;
         throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
       }
-      // Aguarda o formulário (mais de 2 inputs = SPA carregou)
       await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 10000 }).catch(() => {});
       const inputCount = await page.evaluate(() => document.querySelectorAll('input').length);
-      console.log('[ML] URL tentada:', cur, '| inputs:', inputCount);
-      if (inputCount > 2) { loaded = true; break; }
+      // Verifica se tem o campo específico do gerador (placeholder "Insira" ou "Cole")
+      const hasGeneratorInput = await page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input'));
+        return inputs.some(i =>
+          i.placeholder.includes('Insira') ||
+          i.placeholder.includes('Cole') ||
+          i.placeholder.includes('link') ||
+          i.placeholder.includes('URL') ||
+          i.type === 'url'
+        );
+      });
+      console.log('[ML] URL tentada:', cur, '| inputs:', inputCount, '| temGerador:', hasGeneratorInput);
+      if (hasGeneratorInput) { loaded = true; break; }
     }
 
-    console.log('[ML] Playwright — página:', page.url(), '|', await page.title().catch(() => '?'), '| formulário carregou:', loaded);
+    // Se não achou o gerador nas sub-páginas, tenta clicar no menu "Gerador de Links" do hub
+    if (!loaded) {
+      const hubUrl = (savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub?is_affiliate=true');
+      await page.goto(hubUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+      await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 10000 }).catch(() => {});
+      // Tenta clicar no link "Gerador de Links" ou "Gerar link" no menu lateral
+      const menuSelectors = [
+        'a:has-text("Gerador de links")',
+        'a:has-text("Gerar link")',
+        'a:has-text("Link generator")',
+        'a[href*="link-generator"]',
+        'a[href*="gerador"]',
+        'nav a:nth-child(2)',
+      ];
+      for (const sel of menuSelectors) {
+        try {
+          await page.click(sel, { timeout: 3000 });
+          await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
+          const hasGen = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('input')).some(i =>
+              i.placeholder.includes('Insira') || i.placeholder.includes('Cole') || i.placeholder.includes('link') || i.type === 'url'
+            )
+          );
+          if (hasGen) { loaded = true; break; }
+        } catch { /* continua */ }
+      }
+    }
+
     const allInputs = await page.evaluate(() =>
       Array.from(document.querySelectorAll('input')).map(i => ({
         type: i.type, placeholder: i.placeholder, id: i.id, className: i.className.substring(0, 60),
       }))
     );
-    console.log('[ML] Inputs na página:', JSON.stringify(allInputs));
+    console.log('[ML] Página final:', page.url(), '| inputs:', JSON.stringify(allInputs));
 
-    // Verifica se há iframes com o formulário
-    const frames = page.frames();
-    console.log('[ML] Frames na página:', frames.map(f => f.url()));
-
-    // Tenta encontrar o input em todos os frames (principal + iframes)
-    let inputHandle = null;
-    let targetFrame = page;
+    // Seletores do gerador — inclui o seletor específico do portal ML (andes-form-control)
     const inputSelectors = [
-      'input[placeholder*="link"]','input[placeholder*="URL"]','input[placeholder*="url"]',
-      'input[placeholder*="Cole"]','input[placeholder*="Insira"]','input[type="url"]',
-      'input[data-testid*="input"]','input[class*="link"]','input[class*="url"]',
-      'input[class*="input"]','.link-generator input','.affiliate input','form input[type="text"]',
+      'input[placeholder*="Insira"]',
+      'input[placeholder*="Cole"]',
+      'input[placeholder*="link"]',
+      'input[placeholder*="URL"]',
+      'input[placeholder*="url"]',
+      'input[type="url"]',
+      '.andes-form-control__field[type="text"]',
+      'input[class*="andes-form-control__field"]',
+      'input[data-testid*="input"]',
+      'form input[type="text"]:not([id="cb1-edit"])',
     ];
-    for (const frame of frames) {
-      for (const sel of inputSelectors) {
-        try {
-          await frame.waitForSelector(sel, { timeout: 1500 });
-          inputHandle = sel;
-          targetFrame = frame;
-          break;
-        } catch { /* continua */ }
-      }
-      if (inputHandle) break;
+    let inputHandle = null;
+    for (const sel of inputSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 2000 });
+        // Confirma que não é a barra de busca do header
+        const isValid = await page.evaluate((s) => {
+          const el = document.querySelector(s);
+          return el && el.id !== 'cb1-edit' && !el.className.includes('nav-search');
+        }, sel);
+        if (isValid) { inputHandle = sel; break; }
+      } catch { /* continua */ }
     }
-    if (!inputHandle) throw new Error('Input não encontrado — a página de afiliados pode ter mudado. Inputs vistos: ' + JSON.stringify(allInputs.slice(0,5)));
+    if (!inputHandle) throw new Error('Input do gerador não encontrado. URL: ' + page.url() + ' Inputs: ' + JSON.stringify(allInputs.slice(0,8)));
 
-    await targetFrame.fill(inputHandle, trackedUrl);
-    const btnSelectors = ['button[type="submit"]','button:has-text("Gerar")','button:has-text("Criar link")','button:has-text("Encurtar")','form button'];
+    await page.fill(inputHandle, trackedUrl);
+    const btnSelectors = [
+      'button:has-text("Gerar link")',
+      'button:has-text("Gerar")',
+      'button:has-text("Criar link")',
+      'button:has-text("Encurtar")',
+      'button[type="submit"]',
+      'form button',
+    ];
     for (const sel of btnSelectors) {
-      try { await targetFrame.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
+      try { await page.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
     }
-    await targetFrame.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 15000 });
+    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 15000 });
     const shortLink = await page.evaluate(() => {
-      for (const inp of document.querySelectorAll('input[readonly],input[class*="result"]')) {
+      for (const inp of document.querySelectorAll('input[readonly],input[class*="result"],input[class*="output"]')) {
         const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/); if (m) return m[0];
       }
       const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
