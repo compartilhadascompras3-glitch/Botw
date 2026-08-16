@@ -727,12 +727,22 @@ async function mlGenerateLink(productUrl) {
 
   const page = await mlContext.newPage();
   try {
+    // Lê a URL do gerador salva pelo login (ml-generator-url.json) ou usa padrões
+    const generatorUrlFile = path.join(__dirname, 'ml-generator-url.json');
+    let savedGeneratorUrl = null;
+    if (fs.existsSync(generatorUrlFile)) {
+      try {
+        savedGeneratorUrl = JSON.parse(fs.readFileSync(generatorUrlFile, 'utf8')).generatorUrl;
+        console.log('[ML] URL do gerador (salva):', savedGeneratorUrl);
+      } catch { /* ignora */ }
+    }
+
     // Tenta a URL correta do portal de afiliados (o gerador fica dentro do portal logado)
     const affiliateUrls = [
+      savedGeneratorUrl,
       'https://www.mercadolivre.com.br/afiliados/gerador-de-links',
       'https://www.mercadolivre.com.br/afiliados',
-      'https://www.mercadolivre.com.br/l/afiliados-gere-seus-links',
-    ];
+    ].filter(Boolean);
     let loaded = false;
     for (const aUrl of affiliateUrls) {
       await page.goto(aUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});

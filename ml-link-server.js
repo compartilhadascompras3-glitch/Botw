@@ -80,17 +80,23 @@ async function saveCookies() {
 async function doLoginFlow() {
   console.log('🔑  Modo login — abrindo browser visível...');
   console.log('    Faça login na sua conta do Mercado Livre.');
-  console.log('    Quando terminar, volte aqui e pressione ENTER.\n');
+  console.log('    Quando o gerador de links aparecer, pressione ENTER.\n');
 
   await launchBrowser(false); // visível
   const page = await context.newPage();
-  await page.goto('https://www.mercadolivre.com.br/l/afiliados-gere-seus-links', {
+
+  // Abre direto o portal de afiliados (requer login)
+  await page.goto('https://www.mercadolivre.com.br/afiliados', {
     waitUntil: 'domcontentloaded',
     timeout: 60000,
   });
 
+  console.log('    O browser abriu. Faça login se necessário.');
+  console.log('    Navegue até "Gerador de Links" no menu do portal.');
+  console.log('    Quando o campo para colar o link aparecer, pressione ENTER aqui.\n');
+
   // Espera o usuário pressionar ENTER — muito mais confiável do que detectar fechamento
-  process.stdout.write('    [Pressione ENTER após fazer login] ');
+  process.stdout.write('    [Pressione ENTER após ver o gerador de links] ');
   await new Promise((resolve) => {
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
@@ -98,9 +104,20 @@ async function doLoginFlow() {
   });
   process.stdin.pause();
 
+  // Salva a URL atual para que o wa-server saiba onde está o gerador
+  const finalUrl = page.url();
+  console.log('    URL final:', finalUrl);
+
+  // Salva a URL do gerador junto com os cookies
   await saveCookies();
+  // Salva a URL do gerador em arquivo separado para o wa-server usar
+  fs.writeFileSync(
+    path.join(__dirname, 'ml-generator-url.json'),
+    JSON.stringify({ generatorUrl: finalUrl, savedAt: new Date().toISOString() }, null, 2)
+  );
+  console.log('    URL do gerador salva em ml-generator-url.json');
   await browser.close();
-  console.log('✅  Cookies salvos! Agora rode: node ml-link-server.js');
+  console.log('✅  Cookies salvos! Agora rode: node wa-server.js');
   process.exit(0);
 }
 
