@@ -677,18 +677,103 @@ async function mlGenerateLink(productUrl) {
       mlBrowser = null; mlContext = null;
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
-    const inputSel = 'input[placeholder*="link"], input[placeholder*="URL"], input[type="url"], input[type="text"][class*="link"]';
-    await page.waitForSelector(inputSel, { timeout: 15000 });
-    await page.fill(inputSel, '');
-    await page.fill(inputSel, productUrl);
-    const btnSel = 'button[type="submit"], button:has-text("Gerar"), button:has-text("Criar link")';
-    await page.click(btnSel);
-    await page.waitForSelector('text=/meli\\.la\\//i', { timeout: 15000 });
+
+    // Aguarda a SPA carregar completamente
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+
+    // Tenta vários seletores possíveis para o input (o ML muda com frequência)
+    const inputSelectors = [
+      'input[placeholder*="link"]',
+      'input[placeholder*="URL"]',
+      'input[placeholder*="url"]',
+      'input[placeholder*="Cole"]',
+      'input[placeholder*="Insira"]',
+      'input[type="url"]',
+      'input[data-testid*="input"]',
+      'input[class*="link"]',
+      'input[class*="url"]',
+      'input[class*="input"]',
+      '.link-generator input',
+      '.affiliate input',
+      'form input[type="text"]',
+    ];
+
+    let inputHandle = null;
+    for (const sel of inputSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 3000 });
+        inputHandle = sel;
+        break;
+      } catch { /* tenta o próximo */ }
+    }
+
+    if (!inputHandle) {
+      // Último recurso: pega o primeiro input de texto visível na página
+      const visible = await page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
+        const v = inputs.find(el => {
+          const r = el.getBoundingClientRect();
+          return r.width > 100 && r.height > 0;
+        });
+        if (!v) return null;
+        // Gera um seletor único pelo id ou pela posição no DOM
+        return v.id ? `#${v.id}` : null;
+      });
+      if (visible) inputHandle = visible;
+    }
+
+    if (!inputHandle) throw new Error('Input do portal de afiliados não encontrado — o ML pode ter mudado o layout');
+
+    await page.fill(inputHandle, '');
+    await page.fill(inputHandle, productUrl);
+
+    // Tenta vários seletores para o botão "Gerar"
+    const btnSelectors = [
+      'button[type="submit"]',
+      'button:has-text("Gerar")',
+      'button:has-text("Criar link")',
+      'button:has-text("Encurtar")',
+      'button:has-text("Gerar link")',
+      '[data-testid*="submit"]',
+      '[data-testid*="generate"]',
+      'form button',
+    ];
+    let clicked = false;
+    for (const sel of btnSelectors) {
+      try {
+        await page.click(sel, { timeout: 3000 });
+        clicked = true;
+        break;
+      } catch { /* tenta o próximo */ }
+    }
+    if (!clicked) throw new Error('Botão de gerar link não encontrado');
+
+    // Aguarda o link aparecer — tenta tanto o seletor de texto quanto qualquer link meli.la
+    try {
+      await page.waitForSelector('text=/meli\\.la\\//i', { timeout: 15000 });
+    } catch {
+      // Verifica se o link aparece em algum input de resultado
+      await page.waitForFunction(
+        () => document.body.innerText.includes('meli.la/'),
+        { timeout: 15000 }
+      );
+    }
+
     const shortLink = await page.evaluate(() => {
+      // Procura em inputs de resultado, links e texto da página
+      const inputs = Array.from(document.querySelectorAll('input[readonly], input[class*="result"], input[class*="output"]'));
+      for (const inp of inputs) {
+        const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
+        if (m) return m[0];
+      }
       const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
       return m ? m[0] : null;
     });
-    if (!shortLink) throw new Error('Link meli.la não encontrado na página');
+    if (!shortLink) {
+      const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
+      console.error('[ML] Página após gerar:', bodyText);
+      throw new Error('Link meli.la não encontrado na página');
+    }
     mlLinkCache.set(productUrl, { shortLink, expiresAt: Date.now() + ML_CACHE_TTL });
     console.log('[ML] Link gerado:', shortLink);
     return shortLink;
