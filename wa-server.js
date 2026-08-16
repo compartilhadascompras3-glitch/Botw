@@ -771,10 +771,21 @@ async function mlGenerateLink(productUrl) {
       } catch { /* continua */ }
     }
     if (!clicked) {
-      // Tenta pressionar Enter no campo
       await page.press('input.andes-form-control__field', 'Enter');
       console.log('[ML] Enter pressionado no campo');
     }
+
+    // Salva screenshot logo após clicar para diagnóstico
+    const ssPath = require('path').join(__dirname, 'ml-debug.png');
+    await new Promise(r => setTimeout(r, 3000)); // aguarda 3s para a página reagir
+    await page.screenshot({ path: ssPath, fullPage: false }).catch(() => {});
+    const pageText = await page.evaluate(() => document.body.innerText.substring(0, 800));
+    const allBtns = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().slice(0, 30))
+    );
+    console.log('[ML] Screenshot salvo:', ssPath);
+    console.log('[ML] Texto pós-clique:', pageText.replace(/\n+/g, ' ').slice(0, 400));
+    console.log('[ML] Botões:', JSON.stringify(allBtns.slice(0, 12)));
 
     // Aguarda resultado — link meli.la ou input readonly com resultado
     // Espera 20s pelo meli.la; se não aparecer, salva screenshot e lista texto da página
