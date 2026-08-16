@@ -759,10 +759,9 @@ async function mlGenerateLink(productUrl) {
     // Usa a ferramenta "Links de afiliados" — clicar nela abre o gerador direto
     const toolSelectors = [
       'a:has-text("Links de afiliados")',
-      'a[href*="link"]',
       'button:has-text("Links de afiliados")',
-      '[title*="Links de afiliados"]',
-      'img[alt*="Links de afiliados"]',
+      '[title="Links de afiliados"]',
+      'img[alt="Links de afiliados"]',
     ];
     let toolClicked = false;
     for (const sel of toolSelectors) {
