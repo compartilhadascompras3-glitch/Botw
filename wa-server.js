@@ -809,13 +809,38 @@ async function mlGenerateLink(productUrl) {
       }
     }
 
-    // Salva screenshot logo após clicar para diagnóstico
+    // Salva screenshot logo após clicar e faz upload para GitHub
     const ssPath = require('path').join(__dirname, 'ml-debug.png');
     await new Promise(r => setTimeout(r, 3000));
     await page.screenshot({ path: ssPath, fullPage: false }).catch(() => {});
     const pageText = await page.evaluate(() => document.body.innerText.substring(0, 800));
     console.log('[ML] Screenshot salvo:', ssPath);
     console.log('[ML] Texto pós-clique:', pageText.replace(/\n+/g, ' ').slice(0, 400));
+
+    // Upload automático do screenshot para GitHub
+    try {
+      const imgData = fs.readFileSync(ssPath).toString('base64');
+      const ghToken = process.env.GITHUB_TOKEN || '';
+      if (ghToken) {
+        // Verifica se o arquivo já existe no repo para pegar o SHA
+        const getRes = await fetch('https://api.github.com/repos/compartilhadascompras3-glitch/Botw/contents/ml-debug.png', {
+          headers: { Authorization: `token ${ghToken}`, 'User-Agent': 'wa-server' },
+          signal: AbortSignal.timeout(8000),
+        });
+        const existing = getRes.ok ? await getRes.json() : null;
+        const putBody = { message: 'debug: ml-debug.png atualizado', content: imgData, ...(existing?.sha ? { sha: existing.sha } : {}) };
+        const putRes = await fetch('https://api.github.com/repos/compartilhadascompras3-glitch/Botw/contents/ml-debug.png', {
+          method: 'PUT',
+          headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'wa-server' },
+          body: JSON.stringify(putBody),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (putRes.ok) console.log('[ML] Screenshot enviado para GitHub: https://github.com/compartilhadascompras3-glitch/Botw/blob/main/ml-debug.png');
+        else console.warn('[ML] GitHub upload falhou:', putRes.status);
+      } else {
+        console.warn('[ML] GITHUB_TOKEN não definido no .env — screenshot só local');
+      }
+    } catch (e) { console.warn('[ML] Upload GitHub falhou:', e.message); }
 
     // Aguarda resultado — link meli.la ou input readonly com resultado
     // Espera 20s pelo meli.la; se não aparecer, salva screenshot e lista texto da página
