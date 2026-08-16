@@ -777,7 +777,27 @@ async function mlGenerateLink(productUrl) {
     }
 
     // Aguarda resultado — link meli.la ou input readonly com resultado
-    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 20000 });
+    // Espera 20s pelo meli.la; se não aparecer, salva screenshot e lista texto da página
+    const meliFound = await page.waitForFunction(
+      () => document.body.innerText.includes('meli.la/'),
+      { timeout: 20000 }
+    ).then(() => true).catch(() => false);
+
+    if (!meliFound) {
+      // Salva screenshot para diagnóstico
+      const ssPath = require('path').join(__dirname, 'ml-debug.png');
+      await page.screenshot({ path: ssPath, fullPage: true }).catch(() => {});
+      const pageText = await page.evaluate(() => document.body.innerText.substring(0, 1000));
+      const pageUrl3 = page.url();
+      const allBtns = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().slice(0, 30))
+      );
+      console.log('[ML] meli.la NÃO encontrado. URL:', pageUrl3);
+      console.log('[ML] Texto da página:', pageText.replace(/\n+/g, ' ').slice(0, 500));
+      console.log('[ML] Botões na página:', JSON.stringify(allBtns.slice(0, 15)));
+      console.log('[ML] Screenshot salvo em:', ssPath);
+      throw new Error('Link meli.la não apareceu após clicar — verifique ml-debug.png');
+    }
     console.log('[ML] Link meli.la detectado na página');
 
     const shortLink = await page.evaluate(() => {
