@@ -89,19 +89,31 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     // Preenche link de afiliado automaticamente se o permalink já for rastreado
     const isTrackedShopee = /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
     const isTrackedML     = /matt_word=/i.test(product.permalink ?? '');
-    const initialLink = isTrackedShopee || isTrackedML ? product.permalink : '';
+    // ML: começa vazio enquanto gera o meli.la — evita mostrar o link longo
+    const initialLink = isTrackedShopee ? product.permalink : '';
     setAffiliateLink(initialLink);
     setShortLinkLoading(false);
 
-    // Se for ML com matt_word, tenta encurtar para meli.la automaticamente
+    // Se for ML com matt_word, busca o meli.la via polling assíncrono
     if (isTrackedML && product.permalink) {
       setShortLinkLoading(true);
-      fetch(`/api/ml-short-link?url=${encodeURIComponent(product.permalink)}`)
+      // 1. Inicia o job
+      fetch(`/api/ml-short-link?url=${encodeURIComponent(product.permalink)}`, {
+        signal: AbortSignal.timeout(95000),
+      })
         .then(r => r.json())
         .then((data: { ok?: boolean; shortLink?: string }) => {
-          if (data.ok && data.shortLink) setAffiliateLink(data.shortLink);
+          if (data.ok && data.shortLink) {
+            setAffiliateLink(data.shortLink);
+          } else {
+            // Falhou — usa o link longo como fallback
+            setAffiliateLink(product.permalink ?? '');
+          }
         })
-        .catch(() => { /* fallback silencioso — mantém o link longo */ })
+        .catch(() => {
+          // Timeout ou erro — usa o link longo como fallback
+          setAffiliateLink(product.permalink ?? '');
+        })
         .finally(() => setShortLinkLoading(false));
     }
     // Só gera automaticamente se tiver preço

@@ -724,141 +724,51 @@ async function mlGenerateLink(productUrl) {
 
   // ── Fallback: Playwright (portal web) ─────────────────────────────────────
   const ready = await mlEnsureBrowser();
-  if (!ready) throw new Error('Playwright não disponível e API REST falhou');
+  if (!ready) throw new Error('Playwright não disponível');
 
   const page = await mlContext.newPage();
   try {
-    // Lê a URL do gerador salva pelo login (ml-generator-url.json) ou usa padrões
-    const generatorUrlFile = path.join(__dirname, 'ml-generator-url.json');
-    let savedGeneratorUrl = null;
-    if (fs.existsSync(generatorUrlFile)) {
-      try {
-        savedGeneratorUrl = JSON.parse(fs.readFileSync(generatorUrlFile, 'utf8')).generatorUrl;
-      } catch { /* ignora */ }
-    }
+    // Vai direto para o gerador de links
+    const generatorUrl = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
+    await page.goto(generatorUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Vai direto para o hub (onde o gerador já está embutido)
-    const hubUrl = savedGeneratorUrl || 'https://www.mercadolivre.com.br/afiliados/hub?is_affiliate=true';
-    await page.goto(hubUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    const cur = page.url();
-    if (cur.includes('login') || cur.includes('registration')) {
+    // Verifica login
+    if (page.url().includes('login') || page.url().includes('registration')) {
       mlBrowser = null; mlContext = null;
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
 
-    // Aguarda o campo "Busque produtos" aparecer
-    await page.waitForSelector('input.andes-form-control__field', { timeout: 20000 });
-    console.log('[ML] Hub carregado:', page.url());
+    // Aguarda o input de URL do gerador aparecer (até 25s)
+    const inputSel = 'input[placeholder*="URL"], input[placeholder*="url"], input[placeholder*="Insira"], input[placeholder*="Cole"], input[type="url"]';
+    await page.waitForSelector(inputSel, { timeout: 25000 });
+    console.log('[ML] Gerador carregado:', page.url());
 
-    // Screenshot do hub carregado — antes de qualquer clique
-    const ssPath = require('path').join(__dirname, 'ml-debug.png');
-    await page.screenshot({ path: ssPath, fullPage: false }).catch(e => console.warn('[ML] screenshot err:', e.message));
-    console.log('[ML] Screenshot inicial salvo:', ssPath, require('fs').statSync(ssPath).size, 'bytes');
-    await uploadScreenshotToGitHub(ssPath);
+    // Cola a URL rastreada e clica em Gerar
+    await page.fill(inputSel, trackedUrl);
+    await new Promise(r => setTimeout(r, 500));
 
-    // Extrai o MLB ID da URL do produto para buscar no portal
-    const mlbMatch = trackedUrl.match(/MLB[- ]?(\d+)/i);
-    const mlbId = mlbMatch ? 'MLB' + mlbMatch[1] : null;
-    // Também tenta pegar o título via URL (fallback)
-    const urlForSearch = mlbId || trackedUrl.split('?')[0].split('/').filter(Boolean).pop() || '';
+    // Clica no botão Gerar
+    const btnSel = 'button:has-text("Gerar"), button:has-text("Criar link"), button[type="submit"]';
+    await page.click(btnSel, { timeout: 5000 });
+    console.log('[ML] Botão Gerar clicado');
 
-    // Usa a ferramenta "Links de afiliados" — clicar nela abre o gerador direto
-    const toolSelectors = [
-      'a:has-text("Links de afiliados")',
-      'button:has-text("Links de afiliados")',
-      '[title="Links de afiliados"]',
-      'img[alt="Links de afiliados"]',
-    ];
-    let toolClicked = false;
-    for (const sel of toolSelectors) {
-      try {
-        const el = await page.$(sel);
-        if (el) {
-          await el.click();
-          await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
-          toolClicked = true;
-          console.log('[ML] Ferramenta "Links de afiliados" clicada');
-          break;
-        }
-      } catch { /* continua */ }
-    }
+    // Aguarda o link meli.la aparecer (até 20s)
+    await page.waitForFunction(() => document.body.innerText.includes('meli.la/'), { timeout: 20000 });
+    console.log('[ML] Link meli.la detectado!');
 
-    // Verifica se abriu um input de URL (o gerador de links)
-    const hasUrlInput = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('input')).some(i =>
-        i.type === 'url' || i.placeholder.toLowerCase().includes('url') ||
-        i.placeholder.toLowerCase().includes('insira') || i.placeholder.toLowerCase().includes('cole')
-      )
-    );
-
-    if (hasUrlInput) {
-      // Gerador de URL — digita a URL rastreada e clica em Gerar
-      const urlInputSel = 'input[type="url"], input[placeholder*="URL"], input[placeholder*="url"], input[placeholder*="Insira"], input[placeholder*="Cole"]';
-      await page.fill(urlInputSel, trackedUrl);
-      const btnSelectors = ['button:has-text("Gerar")', 'button:has-text("Criar")', 'button[type="submit"]', 'form button'];
-      for (const sel of btnSelectors) {
-        try { await page.click(sel, { timeout: 2000 }); break; } catch { /* continua */ }
-      }
-    } else {
-      // Modo "Compartilhar" — busca o produto por MLB ID e clica em Compartilhar
-      console.log('[ML] Modo Compartilhar — buscando produto:', urlForSearch);
-      await page.fill('input.andes-form-control__field', urlForSearch);
-      await page.press('input.andes-form-control__field', 'Enter');
-      await page.waitForFunction(() => document.querySelectorAll('input').length > 2, { timeout: 8000 }).catch(() => {});
-      // Clica no primeiro botão "Compartilhar" da lista
-      const shareBtn = await page.$('button:has-text("Compartilhar")');
-      if (shareBtn) {
-        await shareBtn.click();
-        console.log('[ML] Botão Compartilhar clicado');
-      } else {
-        console.warn('[ML] Botão Compartilhar não encontrado');
-      }
-    }
-
-    // Salva screenshot pós-clique e faz upload
-    await new Promise(r => setTimeout(r, 3000));
-    await page.screenshot({ path: ssPath, fullPage: false }).catch(e => console.warn('[ML] screenshot err2:', e.message));
-    const pageText = await page.evaluate(() => document.body.innerText.substring(0, 800));
-    console.log('[ML] Screenshot pós-clique:', fs.statSync(ssPath).size, 'bytes');
-    console.log('[ML] Texto pós-clique:', pageText.replace(/\n+/g, ' ').slice(0, 400));
-    await uploadScreenshotToGitHub(ssPath);
-
-    // Aguarda resultado — link meli.la ou input readonly com resultado
-    // Espera 20s pelo meli.la; se não aparecer, salva screenshot e lista texto da página
-    const meliFound = await page.waitForFunction(
-      () => document.body.innerText.includes('meli.la/'),
-      { timeout: 20000 }
-    ).then(() => true).catch(() => false);
-
-    if (!meliFound) {
-      // Salva screenshot para diagnóstico
-      const ssPath = require('path').join(__dirname, 'ml-debug.png');
-      await page.screenshot({ path: ssPath, fullPage: true }).catch(() => {});
-      const pageText = await page.evaluate(() => document.body.innerText.substring(0, 1000));
-      const pageUrl3 = page.url();
-      const allBtns = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().slice(0, 30))
-      );
-      console.log('[ML] meli.la NÃO encontrado. URL:', pageUrl3);
-      console.log('[ML] Texto da página:', pageText.replace(/\n+/g, ' ').slice(0, 500));
-      console.log('[ML] Botões na página:', JSON.stringify(allBtns.slice(0, 15)));
-      console.log('[ML] Screenshot salvo em:', ssPath);
-      throw new Error('Link meli.la não apareceu após clicar — verifique ml-debug.png');
-    }
-    console.log('[ML] Link meli.la detectado na página');
-
+    // Extrai o link
     const shortLink = await page.evaluate(() => {
-      // Procura em inputs readonly (campo de resultado)
-      for (const inp of document.querySelectorAll('input[readonly],input[class*="result"],input[class*="output"]')) {
-        const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/); if (m) return m[0];
+      for (const inp of document.querySelectorAll('input[readonly], input[class*="result"], input[class*="output"], input[class*="copy"]')) {
+        const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
+        if (m) return m[0];
       }
-      // Procura no texto da página
       const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
       return m ? m[0] : null;
     });
-    if (!shortLink) throw new Error('Link meli.la não encontrado na página');
+
+    if (!shortLink) throw new Error('Link meli.la não encontrado na página após geração');
     mlLinkCache.set(productUrl, { shortLink, expiresAt: Date.now() + ML_CACHE_TTL });
-    console.log('[ML] Link gerado via Playwright:', shortLink);
+    console.log('[ML] Link gerado:', shortLink);
     return shortLink;
   } finally {
     await page.close();
