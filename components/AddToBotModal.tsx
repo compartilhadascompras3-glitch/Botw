@@ -290,6 +290,9 @@ export function AddToBotModal({ product, mlLinkServerUrl, onClose, onConfirm }: 
 
   if (!product) return null;
 
+  // v2 — debug
+  console.log('[Modal] abrindo produto source=', (product as {source?:string}).source, 'mlServerUrl=', mlLinkServerUrl);
+
   const isAmz = isAmazon(product);
   const isSpe = isShopee(product);
   const storeName = isAmz ? 'Amazon' : isSpe ? 'Shopee' : 'Mercado Livre';
