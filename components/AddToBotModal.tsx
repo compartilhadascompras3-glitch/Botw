@@ -89,51 +89,64 @@ export function AddToBotModal({ product, mlLinkServerUrl, onClose, onConfirm }: 
     setOrigEdit('');
     // Preenche link de afiliado automaticamente
     const isTrackedShopee = /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
-    const isML = (product as { source?: string }).source === 'ml';
-    // ML: começa vazio enquanto gera o meli.la automaticamente
+    // ML: começa vazio — o effect abaixo gera o meli.la
     const initialLink = isTrackedShopee ? product.permalink : '';
     setAffiliateLink(initialLink);
     setShortLinkLoading(false);
-
-    // Produto ML: chama o wa-server diretamente do browser (evita limite Cloudflare Workers)
-    if (isML && product.permalink) {
-      const serverUrl = mlLinkServerUrl?.trim().replace(/\/$/, '');
-      if (serverUrl) {
-        setShortLinkLoading(true);
-        // 1. Inicia o job no wa-server
-        fetch(`${serverUrl}/ml/shorten`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: product.permalink }),
-          signal: AbortSignal.timeout(10000),
-        })
-          .then(r => r.json())
-          .then(async (start: { ok?: boolean; jobId?: string }) => {
-            if (!start.ok || !start.jobId) return;
-            // 2. Polling até 90s
-            const deadline = Date.now() + 90_000;
-            while (Date.now() < deadline) {
-              await new Promise(r => setTimeout(r, 3000));
-              const poll = await fetch(`${serverUrl}/ml/job/${start.jobId}`, {
-                signal: AbortSignal.timeout(8000),
-              }).then(r => r.json()) as { status: string; shortLink?: string };
-              if (poll.status === 'done' && poll.shortLink) {
-                setAffiliateLink(poll.shortLink);
-                return;
-              }
-              if (poll.status === 'error') return;
-            }
-          })
-          .catch(() => { /* mantém vazio */ })
-          .finally(() => setShortLinkLoading(false));
-      }
-    }
     // Só gera automaticamente se tiver preço
     if (product.price > 0) {
       generateTexts(product, aiModel);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product]);
+
+  // Effect separado: gera meli.la quando produto ML e URL do servidor estiverem prontos
+  useEffect(() => {
+    if (!product) return;
+    const isML = (product as { source?: string }).source === 'ml';
+    if (!isML || !product.permalink) return;
+    const serverUrl = mlLinkServerUrl?.trim().replace(/\/$/, '');
+    console.log('[ML] serverUrl:', serverUrl, '| product.source:', (product as {source?:string}).source);
+    if (!serverUrl) return;
+
+    setShortLinkLoading(true);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const startRes = await fetch(`${serverUrl}/ml/shorten`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: product.permalink }),
+          signal: AbortSignal.timeout(10000),
+        });
+        const start = await startRes.json() as { ok?: boolean; jobId?: string };
+        console.log('[ML] job iniciado:', start);
+        if (!start.ok || !start.jobId || cancelled) return;
+
+        const deadline = Date.now() + 90_000;
+        while (Date.now() < deadline && !cancelled) {
+          await new Promise(r => setTimeout(r, 3000));
+          const poll = await fetch(`${serverUrl}/ml/job/${start.jobId}`, {
+            signal: AbortSignal.timeout(8000),
+          }).then(r => r.json()) as { status: string; shortLink?: string };
+          console.log('[ML] poll:', poll);
+          if (poll.status === 'done' && poll.shortLink) {
+            if (!cancelled) setAffiliateLink(poll.shortLink);
+            return;
+          }
+          if (poll.status === 'error') return;
+        }
+      } catch (e) {
+        console.warn('[ML] erro ao gerar link:', e);
+      } finally {
+        if (!cancelled) setShortLinkLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, mlLinkServerUrl]);
 
   // Quando versões chegam, inicializa os textos editáveis
   useEffect(() => {
