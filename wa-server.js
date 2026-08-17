@@ -746,10 +746,22 @@ async function mlGenerateLink(productUrl) {
     await page.waitForSelector(inputSel, { timeout: 20000 });
     console.log('[ML] Gerador carregado, textarea encontrada. URL:', page.url());
 
-    // Limpa e preenche a textarea com a URL rastreada
-    await page.fill(inputSel, '');
-    await page.fill(inputSel, trackedUrl);
-    await new Promise(r => setTimeout(r, 800));
+    // Limpa e preenche a textarea simulando digitação real (para habilitar o botão Gerar)
+    await page.click(inputSel);
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    }, inputSel);
+    await page.type(inputSel, trackedUrl, { delay: 30 });
+    // Dispara eventos de change/input para o framework detectar
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, inputSel);
+    await new Promise(r => setTimeout(r, 1000));
 
     // Clica no botão Gerar
     await page.click('button:has-text("Gerar")', { timeout: 5000 });
