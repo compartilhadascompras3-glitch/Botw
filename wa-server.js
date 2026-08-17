@@ -756,10 +756,24 @@ async function mlGenerateLink(productUrl) {
     console.log('[ML] Botão Gerar clicado');
 
     // Aguarda o link meli.la aparecer no DOM (até 20s)
-    await page.waitForFunction(() => {
+    // Tira screenshot após 5s para diagnóstico
+    await new Promise(r => setTimeout(r, 5000));
+    const ssPath2 = require('path').join(__dirname, 'ml-debug.png');
+    await page.screenshot({ path: ssPath2, fullPage: false }).catch(() => {});
+    await uploadScreenshotToGitHub(ssPath2).catch(() => {});
+    const pageTextAfter = await page.evaluate(() => document.body?.innerText?.slice(0, 600) ?? '').catch(() => '');
+    console.log('[ML] Texto após Gerar:', pageTextAfter.replace(/\n+/g, ' ').slice(0, 400));
+
+    const found = await page.waitForFunction(() => {
       const body = document.body;
       return body && body.innerText && body.innerText.includes('meli.la/');
-    }, { timeout: 20000 });
+    }, { timeout: 15000 }).then(() => true).catch(() => false);
+
+    if (!found) {
+      const finalText = await page.evaluate(() => document.body?.innerText?.slice(0, 800) ?? '').catch(() => '');
+      console.log('[ML] meli.la NÃO encontrado. Texto final:', finalText.replace(/\n+/g, ' ').slice(0, 500));
+      throw new Error('meli.la não apareceu após clicar em Gerar — veja screenshot ml-debug.png');
+    }
     console.log('[ML] Link meli.la detectado!');
 
     // Extrai o link
