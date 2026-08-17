@@ -3,17 +3,15 @@
 # `name` 由后端在部署时动态注入（沙箱跑 `wrangler deploy --dry-run --outdir <out>` 时替换占位）。
 name = "vibe-web-template"
 main = ".open-next/worker.js"
-compatibility_date = "2025-03-01"
+compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = ".open-next/assets"
 binding   = "ASSETS"
 
-# NEON_DATABASE_URL: banco Neon via HTTP (funciona em CF Workers V8 isolate)
-# DATABASE_URL (injetado pelo HappySeeds como secret) usa TCP e não funciona no edge.
 [vars]
-NEON_DATABASE_URL = "postgresql://neondb_owner:npg_QR7qjwe8zDJC@ep-rapid-mud-acck6848-pooler.sa-east-1.aws.neon.tech/neondb"
+NEON_DATABASE_URL = "postgresql://user_fc7eab55_1786958655.fc7eab550f53433c9202d5a4ce259729:QfjBN9jiq-9leFeoeHF_Bw@database-pool.happyseeds.ai:6545/db_vibe_next_template_fc7eab55"
 BTY_LLM_SERVER_BASE_URL = "https://aigw-api.happyseeds.ai/v1"
 LLM_BASE_URL = "https://openrouter.ai/api/v1"
 LLM_MODEL = "google/gemma-4-31b-it:free"
