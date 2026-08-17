@@ -243,17 +243,23 @@ export default function PromoApp() {
   useEffect(() => {
     setSettings(loadSettings());
     setAddedIds(loadAddedIds());
-    // Carrega settings do servidor para garantir mlLinkServerUrl atualizado
+    // Sempre carrega settings do banco — fonte de verdade cross-device
     fetch('/api/settings')
       .then(r => r.json())
-      .then((data: Partial<AppSettings>) => {
-        if (data.mlLinkServerUrl) {
-          setSettings(prev => {
-            const merged = { ...prev, mlLinkServerUrl: data.mlLinkServerUrl! };
-            localStorage.setItem('promo-settings', JSON.stringify(merged));
-            return merged;
-          });
-        }
+      .then((data: { mattWord?: string; mattTool?: string; mlLinkServerUrl?: string; evolutionUrl?: string; evolutionInstance?: string }) => {
+        // Sempre mescla — banco é fonte de verdade cross-device
+        setSettings(prev => {
+          const merged: AppSettings = {
+            ...prev,
+            ...(data.mattWord !== undefined && { mattWord: data.mattWord! }),
+            ...(data.mattTool !== undefined && { mattTool: data.mattTool! }),
+            ...(data.mlLinkServerUrl !== undefined && { mlLinkServerUrl: data.mlLinkServerUrl! }),
+            ...(data.evolutionUrl !== undefined && { evolutionUrl: data.evolutionUrl! }),
+            ...(data.evolutionInstance !== undefined && { evolutionInstance: data.evolutionInstance! }),
+          };
+          localStorage.setItem('promo-settings', JSON.stringify(merged));
+          return merged;
+        });
       })
       .catch(() => { /* silencioso */ });
     // Carrega permalinks já enviados do banco para marcar produtos do histórico
