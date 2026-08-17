@@ -738,13 +738,47 @@ async function mlGenerateLink(productUrl) {
       throw new Error('Sessão expirada — rode: node ml-link-server.js --login');
     }
 
-    // Aguarda o input de URL do gerador aparecer (até 25s)
-    const inputSel = 'input[placeholder*="URL"], input[placeholder*="url"], input[placeholder*="Insira"], input[placeholder*="Cole"], input[type="url"]';
-    await page.waitForSelector(inputSel, { timeout: 25000 });
-    console.log('[ML] Gerador carregado:', page.url());
+    // Aguarda a página carregar completamente e faz dump dos inputs para diagnosticar
+    await new Promise(r => setTimeout(r, 5000));
+    const pageUrl = page.url();
+    const allInputs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('input, textarea')).map(el => ({
+        tag: el.tagName,
+        type: el.getAttribute('type'),
+        placeholder: el.getAttribute('placeholder'),
+        class: el.className?.slice(0, 60),
+        id: el.id,
+        name: el.getAttribute('name'),
+      }))
+    );
+    const allBtns = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().slice(0,30))
+    );
+    const ssPath = require('path').join(__dirname, 'ml-debug.png');
+    await page.screenshot({ path: ssPath, fullPage: false }).catch(() => {});
+    await uploadScreenshotToGitHub(ssPath).catch(() => {});
+    console.log('[ML] URL após goto:', pageUrl);
+    console.log('[ML] Inputs encontrados:', JSON.stringify(allInputs.slice(0, 10)));
+    console.log('[ML] Botões encontrados:', JSON.stringify(allBtns.slice(0, 10)));
 
-    // Cola a URL rastreada e clica em Gerar
-    await page.fill(inputSel, trackedUrl);
+    // Tenta encontrar qualquer input na página
+    const inputSel = 'input, textarea';
+    const hasInput = await page.$(inputSel);
+    if (!hasInput) throw new Error('Nenhum input encontrado na página — veja ml-debug.png e log de inputs');
+
+    // Usa o primeiro input visível
+    const firstInput = await page.evaluateHandle(() => {
+      for (const el of document.querySelectorAll('input, textarea')) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) return el;
+      }
+      return null;
+    });
+    if (!firstInput) throw new Error('Nenhum input visível encontrado');
+    console.log('[ML] Usando primeiro input visível');
+
+    // Cola a URL rastreada no primeiro input visível e clica em Gerar
+    await firstInput.asElement().fill(trackedUrl).catch(() => page.fill('input', trackedUrl));
     await new Promise(r => setTimeout(r, 500));
 
     // Clica no botão Gerar
