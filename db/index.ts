@@ -28,34 +28,31 @@ export function getDb(): AnyDb {
     const { drizzle } = require('drizzle-orm/postgres-js') as typeof import('drizzle-orm/postgres-js')
     _db = drizzle(postgres(url, { ssl: false, max: 5 }))
   } else {
-    // Cloudflare Workers: usa proxy HTTP
+    // Cloudflare Workers: usa proxy HTTP (banco HappySeeds só aceita TCP)
     const secret = process.env.DB_PROXY_SECRET ?? ''
-    const proxyUrl = '/api/db-proxy'
+    const proxyUrl = process.env.DB_PROXY_URL ?? 'https://app-a8ef200cd7.happyseeds.space/api/db-proxy'
 
-    // Cria um cliente fake que translata as queries do drizzle para chamadas HTTP ao proxy
+    // Cria função compatível com neon() que redireciona ao proxy
+    const proxiedQuery = async (query: string, params?: unknown[]) => {
+      const res = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-proxy-secret': secret },
+        body: JSON.stringify({ query, params: params ?? [] }),
+      })
+      const data = await res.json() as { rows?: unknown[]; error?: string }
+      if (data.error) throw new Error(data.error)
+      return data.rows ?? []
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { drizzle } = require('drizzle-orm/neon-http') as typeof import('drizzle-orm/neon-http')
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { neon } = require('@neondatabase/serverless') as typeof import('@neondatabase/serverless')
-
-    // Override do fetch do neon para redirecionar ao proxy
-    const proxiedNeon = new Proxy(neon(url), {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      apply(_target: any, _thisArg: any, [query, params]: any[]) {
-        return fetch(proxyUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-proxy-secret': secret,
-          },
-          body: JSON.stringify({ query, params }),
-        })
-          .then(r => r.json() as Promise<{ rows: unknown[] }>)
-          .then(data => data.rows ?? [])
-      },
-    })
-
-    _db = drizzle(proxiedNeon)
+    // Usa neon() como base mas sobrescreve o comportamento via Proxy
+    const neonFn = neon(url)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const proxied = Object.assign(proxiedQuery as any, neonFn)
+    _db = drizzle(proxied)
   }
 
   return _db
