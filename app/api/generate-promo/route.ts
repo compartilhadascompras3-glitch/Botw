@@ -23,16 +23,9 @@ const GROQ_KEY_ENV = process.env.GROQ_API_KEY ?? '';
 const GROQ_BASE  = 'https://api.groq.com/openai/v1';
 const GROQ_MODEL = 'qwen/qwen3.6-27b'; // mais moderno — usa reasoning_effort:none para resposta direta
 
-// Lê do banco se não estiver no env
+// Lê chave Groq do env apenas (sem DB — evita chamada reflexiva no Cloudflare Workers)
 async function getGroqKey(): Promise<string> {
-  if (GROQ_KEY_ENV) return GROQ_KEY_ENV;
-  try {
-    const { db } = await import('@/db');
-    const { settings: settingsTable } = await import('@/db/schemas/settings');
-    const { eq } = await import('drizzle-orm');
-    const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'groq_api_key')).limit(1);
-    return rows[0]?.value ?? '';
-  } catch { return ''; }
+  return GROQ_KEY_ENV;
 }
 
 // Mantidos para backward-compat (SSE media — não mais usado para chat)

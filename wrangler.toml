@@ -15,6 +15,7 @@ DB_PROXY_SECRET = "718c4f5b3b3b41c04e6f138fae3ce9211a382311b2075edee6ac8a733cdac
 DB_PROXY_URL = "https://app-a8ef200cd7.happyseeds.space/api/db-proxy"
 NEON_DATABASE_URL = "postgresql://user_fc7eab55_1786958655.fc7eab550f53433c9202d5a4ce259729:QfjBN9jiq-9leFeoeHF_Bw@database-pool.happyseeds.ai:6545/db_vibe_next_template_fc7eab55"
 BTY_LLM_SERVER_BASE_URL = "https://aigw-api.happyseeds.ai/v1"
+BTY_LLM_SERVER_API_KEY = "bty-prod-9219451ae2de97aab987655a32898fe4d188d8788b18ffcc20b4d401911a2398"
 LLM_BASE_URL = "https://openrouter.ai/api/v1"
 LLM_MODEL = "google/gemma-4-31b-it:free"
 SHOPEE_APP_ID = "18337771181"
