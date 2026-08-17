@@ -19,7 +19,7 @@ export interface MLProduct {
   available_quantity: number;
   category_id: string;
   seller_name: string;
-  source?: 'ml' | 'ml_promobit'; // ml_promobit = veio via Promobit
+  source: 'ml' | 'ml_promobit'; // identifica produto como ML para o modal
   coupon?: string | null;
 }
 
@@ -134,6 +134,7 @@ function mapApiItem(item: any, mattWord: string, mattTool: string): MLProduct | 
       available_quantity: item.available_quantity ?? 0,
       category_id: item.category_id ?? '',
       seller_name: item.seller?.nickname ?? '',
+      source: 'ml',
     };
   } catch {
     return null;
@@ -289,7 +290,7 @@ function parseScrapedProduct(item: RawItem, mattWord: string, mattTool: string):
     const rawUrl = meta.url ?? '';
     const fullUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
     const permalink = buildAffiliateLink(fullUrl + (meta.url_params ?? ''), mattWord, mattTool);
-    return { id: meta.id, title, price: currentPrice, original_price: originalPrice, discount_percent: discountPercent, thumbnail, permalink, condition: 'new', sold_quantity: 0, available_quantity: 0, category_id: meta.category_id ?? '', seller_name: '' };
+    return { id: meta.id, title, price: currentPrice, original_price: originalPrice, discount_percent: discountPercent, thumbnail, permalink, condition: 'new', sold_quantity: 0, available_quantity: 0, category_id: meta.category_id ?? '', seller_name: '', source: 'ml' };
   } catch { return null; }
 }
 

@@ -243,6 +243,19 @@ export default function PromoApp() {
   useEffect(() => {
     setSettings(loadSettings());
     setAddedIds(loadAddedIds());
+    // Carrega settings do servidor para garantir mlLinkServerUrl atualizado
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then((data: Partial<AppSettings>) => {
+        if (data.mlLinkServerUrl) {
+          setSettings(prev => {
+            const merged = { ...prev, mlLinkServerUrl: data.mlLinkServerUrl! };
+            localStorage.setItem('promo-settings', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      })
+      .catch(() => { /* silencioso */ });
     // Carrega permalinks já enviados do banco para marcar produtos do histórico
     fetch('/api/history/permalinks')
       .then((r) => r.json())
