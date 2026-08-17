@@ -27,6 +27,7 @@ function isShopee(p: AnyProduct): p is ShopeeProduct {
 
 interface AddToBotModalProps {
   product: AnyProduct | null;
+  mlLinkServerUrl?: string;
   onClose: () => void;
   onConfirm: (product: AnyProduct, text: string, affiliateLink: string) => Promise<void>;
 }
@@ -45,7 +46,7 @@ function stripLinkLine(text: string): string {
     .trim();
 }
 
-export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProps) {
+export function AddToBotModal({ product, mlLinkServerUrl, onClose, onConfirm }: AddToBotModalProps) {
   // IA state
   const [versions, setVersions] = useState<string[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -94,23 +95,38 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     setAffiliateLink(initialLink);
     setShortLinkLoading(false);
 
-    // Produto ML: busca o meli.la direto (wa-server adiciona matt_word/matt_tool automaticamente)
+    // Produto ML: chama o wa-server diretamente do browser (evita limite Cloudflare Workers)
     if (isML && product.permalink) {
-      setShortLinkLoading(true);
-      fetch(`/api/ml-short-link?url=${encodeURIComponent(product.permalink)}`, {
-        signal: AbortSignal.timeout(95000),
-      })
-        .then(r => r.json())
-        .then((data: { ok?: boolean; shortLink?: string }) => {
-          if (data.ok && data.shortLink) {
-            setAffiliateLink(data.shortLink);
-          }
-          // se falhou, mantém vazio — usuário pode colar manualmente
+      const serverUrl = mlLinkServerUrl?.trim().replace(/\/$/, '');
+      if (serverUrl) {
+        setShortLinkLoading(true);
+        // 1. Inicia o job no wa-server
+        fetch(`${serverUrl}/ml/shorten`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: product.permalink }),
+          signal: AbortSignal.timeout(10000),
         })
-        .catch(() => {
-          // Timeout ou erro — mantém vazio
-        })
-        .finally(() => setShortLinkLoading(false));
+          .then(r => r.json())
+          .then(async (start: { ok?: boolean; jobId?: string }) => {
+            if (!start.ok || !start.jobId) return;
+            // 2. Polling até 90s
+            const deadline = Date.now() + 90_000;
+            while (Date.now() < deadline) {
+              await new Promise(r => setTimeout(r, 3000));
+              const poll = await fetch(`${serverUrl}/ml/job/${start.jobId}`, {
+                signal: AbortSignal.timeout(8000),
+              }).then(r => r.json()) as { status: string; shortLink?: string };
+              if (poll.status === 'done' && poll.shortLink) {
+                setAffiliateLink(poll.shortLink);
+                return;
+              }
+              if (poll.status === 'error') return;
+            }
+          })
+          .catch(() => { /* mantém vazio */ })
+          .finally(() => setShortLinkLoading(false));
+      }
     }
     // Só gera automaticamente se tiver preço
     if (product.price > 0) {

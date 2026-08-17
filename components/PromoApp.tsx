@@ -1129,6 +1129,7 @@ export default function PromoApp() {
       {modalProduct && (
         <AddToBotModal
           product={modalProduct}
+          mlLinkServerUrl={settings.mlLinkServerUrl}
           onClose={() => setModalProduct(null)}
           onConfirm={handleModalConfirm}
         />
