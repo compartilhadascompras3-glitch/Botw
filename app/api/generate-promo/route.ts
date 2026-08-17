@@ -353,20 +353,22 @@ function isOpenRouterProvider(): boolean {
 
 /** Chama um único modelo no provider OpenAI-compatível (/chat/completions) com visão. */
 async function callModelOnce(model: string, imageBase64: string, mimeType: string, linkLine: string): Promise<PromoResult> {
-  const dataUrl = `data:${mimeType};base64,${imageBase64}`;
+  const promptText = `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. O JSON de saída deve ter o campo "versions" com EXATAMENTE 3 strings. Cada string é uma versão completa. APENAS o JSON, zero texto fora do JSON, zero markdown, zero asteriscos.${linkLine}`;
+  // Monta conteúdo: com imagem se disponível, só texto se não houver
+  const userContent = imageBase64
+    ? [
+        { type: 'text', text: promptText },
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+      ]
+    : [{ type: 'text', text: promptText }];
+
   const body = {
     model,
     temperature: 1.0,
     max_tokens: 2500,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: `Gere EXATAMENTE 3 versões de copywriting para WhatsApp. O JSON de saída deve ter o campo "versions" com EXATAMENTE 3 strings. Cada string é uma versão completa. APENAS o JSON, zero texto fora do JSON, zero markdown, zero asteriscos.${linkLine}` },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
-      },
+      { role: 'user', content: userContent },
     ],
   };
 
@@ -413,21 +415,21 @@ async function callReactus(imageBase64: string, mimeType: string, linkLine: stri
 
   const userText = `Gere EXATAMENTE 3 versões de copywriting para WhatsApp usando os dados do produto abaixo. APENAS o JSON, zero texto fora do JSON.\n\n${linkLine.trim()}`;
 
+  // Monta conteúdo: com imagem se disponível, só texto se não houver
+  const userContent = imageBase64
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
+        { type: 'text', text: userText },
+      ]
+    : [{ type: 'text', text: userText }];
+
   const requestBody = {
     model: BTY_MODEL,
     max_tokens: 2500,
     temperature: 1.0,
     stream: false,
     system: GROQ_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
-          { type: 'text', text: userText },
-        ],
-      },
-    ],
+    messages: [{ role: 'user', content: userContent }],
   };
 
   const res = await fetch(`${BTY_BASE}/messages`, {
@@ -555,11 +557,11 @@ export async function POST(req: NextRequest) {
     };
     const { imageBase64, mimeType, link, title, price, originalPrice, discountPercent, coupon, preferredProvider } = body;
 
-    if (!imageBase64 || !mimeType) {
-      return NextResponse.json({ error: 'imageBase64 e mimeType são obrigatórios.' }, { status: 400 });
+    if (!mimeType) {
+      return NextResponse.json({ error: 'mimeType é obrigatório.' }, { status: 400 });
     }
 
-    const cleanB64 = imageBase64.replace(/\s/g, '');
+    const cleanB64 = imageBase64?.replace(/\s/g, '') ?? '';
 
     // Monta contexto textual com dados do produto — ajuda modelos com visão fraca
     const productContext = [

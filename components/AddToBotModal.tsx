@@ -177,7 +177,8 @@ export function AddToBotModal({ product, mlLinkServerUrl, onClose, onConfirm }: 
         if (match) { mimeType = match[1]; imageBase64 = match[2]; }
       }
 
-      if (!imageBase64) throw new Error('Não foi possível carregar a imagem do produto.');
+      // Se a imagem não carregou (ex: CDN do ML bloqueia o proxy), continua sem imagem
+      // O generate-promo gera o texto só com título/preço
 
       // 2. Chama a IA com dados do produto
       const coupon = (p as { coupon?: string | null }).coupon ?? null;
