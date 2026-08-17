@@ -767,33 +767,28 @@ async function mlGenerateLink(productUrl) {
     await page.click('button:has-text("Gerar")', { timeout: 5000 });
     console.log('[ML] Botão Gerar clicado');
 
-    // Aguarda o link meli.la aparecer no DOM (até 20s)
-    // Tira screenshot após 5s para diagnóstico
-    await new Promise(r => setTimeout(r, 5000));
-    const ssPath2 = require('path').join(__dirname, 'ml-debug.png');
-    await page.screenshot({ path: ssPath2, fullPage: false }).catch(() => {});
-    await uploadScreenshotToGitHub(ssPath2).catch(() => {});
-    const pageTextAfter = await page.evaluate(() => document.body?.innerText?.slice(0, 600) ?? '').catch(() => '');
-    console.log('[ML] Texto após Gerar:', pageTextAfter.replace(/\n+/g, ' ').slice(0, 400));
-
+    // Aguarda o link meli.la aparecer — pode estar em input.value ou no DOM
+    // O resultado aparece num campo <input> readonly no painel direito
     const found = await page.waitForFunction(() => {
-      const body = document.body;
-      return body && body.innerText && body.innerText.includes('meli.la/');
-    }, { timeout: 15000 }).then(() => true).catch(() => false);
+      // Busca em todos os inputs e textareas
+      for (const el of document.querySelectorAll('input, textarea')) {
+        if (el.value && el.value.includes('meli.la/')) return true;
+      }
+      // Fallback: texto puro
+      return document.body.innerText.includes('meli.la/');
+    }, { timeout: 30000 }).then(() => true).catch(() => false);
 
-    if (!found) {
-      const finalText = await page.evaluate(() => document.body?.innerText?.slice(0, 800) ?? '').catch(() => '');
-      console.log('[ML] meli.la NÃO encontrado. Texto final:', finalText.replace(/\n+/g, ' ').slice(0, 500));
-      throw new Error('meli.la não apareceu após clicar em Gerar — veja screenshot ml-debug.png');
-    }
+    if (!found) throw new Error('meli.la não apareceu após 30s');
     console.log('[ML] Link meli.la detectado!');
 
     // Extrai o link
     const shortLink = await page.evaluate(() => {
-      for (const inp of document.querySelectorAll('input[readonly], input[class*="result"], input[class*="output"], input[class*="copy"]')) {
-        const m = inp.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
+      // Primeiro tenta input/textarea com o valor
+      for (const el of document.querySelectorAll('input, textarea')) {
+        const m = el.value && el.value.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
         if (m) return m[0];
       }
+      // Fallback: texto puro
       const m = document.body.innerText.match(/https?:\/\/meli\.la\/[A-Za-z0-9]+/);
       return m ? m[0] : null;
     });
