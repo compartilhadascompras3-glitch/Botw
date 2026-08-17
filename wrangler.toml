@@ -11,6 +11,7 @@ directory = ".open-next/assets"
 binding   = "ASSETS"
 
 [vars]
+DB_PROXY_SECRET = "718c4f5b3b3b41c04e6f138fae3ce9211a382311b2075edee6ac8a733cdac578"
 NEON_DATABASE_URL = "postgresql://user_fc7eab55_1786958655.fc7eab550f53433c9202d5a4ce259729:QfjBN9jiq-9leFeoeHF_Bw@database-pool.happyseeds.ai:6545/db_vibe_next_template_fc7eab55"
 BTY_LLM_SERVER_BASE_URL = "https://aigw-api.happyseeds.ai/v1"
 LLM_BASE_URL = "https://openrouter.ai/api/v1"
