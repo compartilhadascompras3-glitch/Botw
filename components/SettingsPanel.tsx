@@ -203,7 +203,7 @@ export function SettingsPanel({ settings, onSave }: SettingsPanelProps) {
                 Quando configurado, os links do ML no bot saem como <strong style={{ color: '#FFA500' }}>meli.la/xxxxx</strong>.
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: '#666' }}>URL do ml-link-server (porta 3002)</span>
+                <span style={{ fontSize: 12, color: '#666' }}>URL do wa-server via ngrok (mesma URL do bot, porta 3001)</span>
                 <input
                   type="url"
                   value={local.mlLinkServerUrl ?? ''}
