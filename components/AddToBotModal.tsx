@@ -103,10 +103,11 @@ export function AddToBotModal({ product, mlLinkServerUrl, onClose, onConfirm }: 
   // Effect separado: gera meli.la quando produto ML e URL do servidor estiverem prontos
   useEffect(() => {
     if (!product) return;
-    const isML = (product as { source?: string }).source === 'ml';
+    const src = (product as { source?: string }).source;
+    const isML = src === 'ml' || src === 'ml_promobit';
+    console.log('[ML-effect] source=', src, 'isML=', isML, 'permalink=', product.permalink?.slice(0,50), 'serverUrl=', mlLinkServerUrl);
     if (!isML || !product.permalink) return;
     const serverUrl = mlLinkServerUrl?.trim().replace(/\/$/, '');
-    console.log('[ML] serverUrl:', serverUrl, '| product.source:', (product as {source?:string}).source);
     if (!serverUrl) return;
 
     setShortLinkLoading(true);
