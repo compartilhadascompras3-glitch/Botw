@@ -86,18 +86,17 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
     setSaved(false);
     setPriceEdit('');
     setOrigEdit('');
-    // Preenche link de afiliado automaticamente se o permalink já for rastreado
+    // Preenche link de afiliado automaticamente
     const isTrackedShopee = /s\.shopee\.com\.br|shp\.ee/i.test(product.permalink ?? '');
-    const isTrackedML     = /matt_word=/i.test(product.permalink ?? '');
-    // ML: começa vazio enquanto gera o meli.la — evita mostrar o link longo
+    const isML = (product as { source?: string }).source === 'ml';
+    // ML: começa vazio enquanto gera o meli.la automaticamente
     const initialLink = isTrackedShopee ? product.permalink : '';
     setAffiliateLink(initialLink);
     setShortLinkLoading(false);
 
-    // Se for ML com matt_word, busca o meli.la via polling assíncrono
-    if (isTrackedML && product.permalink) {
+    // Produto ML: busca o meli.la direto (wa-server adiciona matt_word/matt_tool automaticamente)
+    if (isML && product.permalink) {
       setShortLinkLoading(true);
-      // 1. Inicia o job
       fetch(`/api/ml-short-link?url=${encodeURIComponent(product.permalink)}`, {
         signal: AbortSignal.timeout(95000),
       })
@@ -106,7 +105,7 @@ export function AddToBotModal({ product, onClose, onConfirm }: AddToBotModalProp
           if (data.ok && data.shortLink) {
             setAffiliateLink(data.shortLink);
           }
-          // se falhou, mantém vazio — usuário pode colar o link manualmente
+          // se falhou, mantém vazio — usuário pode colar manualmente
         })
         .catch(() => {
           // Timeout ou erro — mantém vazio
