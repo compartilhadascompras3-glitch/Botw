@@ -316,15 +316,11 @@ console.log(`[Scheduler] NEXT_API = ${NEXT_API}`);
 
 /** Busca mensagens do banco diretamente via Neon HTTP (fallback: Next.js API) */
 async function fetchMessages() {
-  // Tenta direto no banco primeiro — SEM media_data_url para economizar transferência
-  const rows = await dbQuery(
-    'SELECT id, text, media_name, media_type, send_once, sort_order, created_at, (media_data_url IS NOT NULL) AS has_media FROM messages ORDER BY sort_order ASC, created_at ASC'
-  );
-  if (rows && rows.length >= 0) return rows;
-  // Fallback: Next.js API
+  // Busca mensagens via Next.js API (banco HappySeeds)
   try {
     const res = await fetch(`${NEXT_API}/api/messages`, {
       headers: { 'User-Agent': 'wa-server/1.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) { console.error(`[Scheduler] fetchMessages HTTP ${res.status}`); return []; }
     const data = await res.json();
