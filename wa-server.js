@@ -454,7 +454,7 @@ async function schedulerFire() {
     const msgId       = msg.id;
     const msgText     = msg.text ?? '';
     const msgMediaUrl = msg.mediaDataUrl ?? msg.media_data_url ?? null;
-    const msgHasMedia = !!(msg.has_media || msg.hasMedia || msgMediaUrl);
+    const msgHasMedia = !!(msg.has_media || msg.hasMedia || msgMediaUrl || (msgMediaName && msgMediaName.startsWith('http')));
     const msgMediaType = msg.mediaType ?? msg.media_type ?? 'application/octet-stream';
     const msgMediaName = msg.mediaName ?? msg.media_name ?? 'file';
     const msgSendOnce  = msg.sendOnce  ?? msg.send_once  ?? false;
@@ -476,7 +476,25 @@ async function schedulerFire() {
     // Resolve lazy media (busca imagem só agora, na hora de enviar)
     if (media?._lazy) {
       console.log(`[Scheduler] Buscando imagem da mensagem ${media.id}...`);
-      media.dataUrl = await fetchMessageMedia(media.id);
+
+      // Se mediaName é uma URL, baixa a imagem diretamente
+      if (media.name && media.name.startsWith('http')) {
+        try {
+          const imgRes = await fetch(media.name, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
+          if (imgRes.ok) {
+            const buf = Buffer.from(await imgRes.arrayBuffer());
+            const ct = imgRes.headers.get('content-type') || 'image/jpeg';
+            media.dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
+            console.log(`[Scheduler] Imagem baixada da URL: ${Math.round(buf.length/1024)}KB`);
+          }
+        } catch (e) { console.warn('[Scheduler] Falha ao baixar imagem da URL:', e.message); }
+      }
+
+      // Fallback: busca base64 da API
+      if (!media.dataUrl) {
+        media.dataUrl = await fetchMessageMedia(media.id);
+      }
+
       media._lazy = false;
       if (!media.dataUrl) {
         console.warn(`[Scheduler] Imagem não encontrada para mensagem ${media.id} — enviando sem imagem`);
