@@ -454,10 +454,10 @@ async function schedulerFire() {
     const msgId       = msg.id;
     const msgText     = msg.text ?? '';
     const msgMediaUrl = msg.mediaDataUrl ?? msg.media_data_url ?? null;
-    const msgHasMedia = !!(msg.has_media || msg.hasMedia || msgMediaUrl || (msgMediaName && msgMediaName.startsWith('http')));
     const msgMediaType = msg.mediaType ?? msg.media_type ?? 'application/octet-stream';
     const msgMediaName = msg.mediaName ?? msg.media_name ?? 'file';
     const msgSendOnce  = msg.sendOnce  ?? msg.send_once  ?? false;
+    const msgHasMedia = !!(msg.has_media || msg.hasMedia || msgMediaUrl || msgMediaName.startsWith('http'));
 
     const media = msgHasMedia ? {
       _lazy: !msgMediaUrl,
